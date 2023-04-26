@@ -312,17 +312,17 @@ def clip_feature_surgery(image_features, text_features, redundant_feats=None, t=
 def similarity_map_to_points(sm, shape, cv2_img, t=0.8, down_sample=2):
     side = int(sm.shape[0] ** 0.5)
     sm = sm.reshape(1, 1, side, side)
-    sm1 = sm
+    # sm1 = sm
     # down sample to smooth results
     down_side = side // down_sample
     sm = torch.nn.functional.interpolate(sm, (down_side, down_side), mode='bilinear')[0, 0, :, :]
-    sm1 = torch.nn.functional.interpolate(sm1, (cv2_img.shape[0], cv2_img.shape[1]), mode='bilinear')[0, 0, :, :]
+    # sm1 = torch.nn.functional.interpolate(sm1, (cv2_img.shape[0], cv2_img.shape[1]), mode='bilinear')[0, 0, :, :]
     h, w = sm.shape
     sm = sm.reshape(-1)
     sm = (sm - sm.min()) / (sm.max() - sm.min())
-    sm1 = sm1.reshape(-1)
-    sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
-    sm1 = sm1.reshape(cv2_img.shape[0], cv2_img.shape[1])
+    # sm1 = sm1.reshape(-1)
+    # sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
+    # sm1 = sm1.reshape(cv2_img.shape[0], cv2_img.shape[1])
     # import pdb
     # pdb.set_trace()
     rank = sm.sort(0)[1]
@@ -333,15 +333,15 @@ def similarity_map_to_points(sm, shape, cv2_img, t=0.8, down_sample=2):
     labels = np.ones(num * 2).astype('uint8')
     labels[num:] = 0
     points = []
-    vis = (sm1.cpu().numpy() * 255).astype('uint8')
-    vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
-    th, imgx = cv2.threshold(vis, 0, 255, cv2.THRESH_OTSU)
-    plt.imshow(imgx)
-    plt.savefig("./map1.jpg")
-    vis = cv2_img * 0.4 + vis * 0.6
-    vis = cv2.cvtColor(vis.astype('uint8'), cv2.COLOR_BGR2RGB)
-    plt.imshow(vis)
-    plt.savefig("./map.jpg")
+    # vis = (sm1.cpu().numpy() * 255).astype('uint8')
+    # vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
+    # th, imgx = cv2.threshold(vis, 0, 255, cv2.THRESH_OTSU)
+    # plt.imshow(imgx)
+    # plt.savefig("./map1.jpg")
+    # vis = cv2_img * 0.4 + vis * 0.6
+    # vis = cv2.cvtColor(vis.astype('uint8'), cv2.COLOR_BGR2RGB)
+    # plt.imshow(vis)
+    # plt.savefig("./map.jpg")
     # positives
     for idx in rank[-num:]:
         x = min((idx % w + 0.5) * scale_w, shape[1] - 1) # +0.5 to center
