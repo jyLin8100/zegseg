@@ -46,10 +46,12 @@ class ImageFolder(Dataset):
             filenames = filenames[:first_k]
 
         self.files = []
+        self.paths = []
 
         for filename in filenames:
             file = os.path.join(path, filename)
             self.append_file(file)
+            self.paths.append(file)
 
     def append_file(self, file):
         if self.cache == 'none':
@@ -80,6 +82,8 @@ class PairedImageFolders(Dataset):
     def __init__(self, root_path_1, root_path_2, **kwargs):
         self.dataset_1 = ImageFolder(root_path_1, **kwargs)
         self.dataset_2 = ImageFolder(root_path_2, **kwargs, mask=True)
+        self.paths_img = self.dataset_1.paths
+        self.paths_gt = self.dataset_2.paths
 
     def __len__(self):
         return len(self.dataset_1)

@@ -5,7 +5,7 @@ import shutil
 import torch
 import numpy as np
 from torch.optim import SGD, Adam, AdamW
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 
 import sod_metric
 class Averager():
