@@ -1,4 +1,9 @@
 __pycache__
 *.pth
 .ipynb_checkpoints
-script.sh.o*
+
+*.jpg
+*.png
+*.sh.o*
+data
+output*/*

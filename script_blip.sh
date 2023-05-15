@@ -17,5 +17,7 @@ source ~/pytorchenv1/bin/activate
 
 cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
 # python demo.py
-# python demo_dataset.py --cache_blip_filename COD_woPos
-# python demo_dataset.py --cache_blip_filename COD_GT
+python demo_dataset_blip.py
+
+
+

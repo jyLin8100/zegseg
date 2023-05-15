@@ -104,26 +104,20 @@ def available_models() -> List[str]:
 
 def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", jit: bool = False, download_root: str = None):
     """Load a CLIP model
-
     Parameters
     ----------
     name : str
         A model name listed by `clip.available_models()`, or the path to a model checkpoint containing the state_dict
-
     device : Union[str, torch.device]
         The device to put the loaded model
-
     jit : bool
         Whether to load the optimized JIT model or more hackable non-JIT model (default).
-
     download_root: str
         path to download the model files; by default, it uses "~/.cache/clip"
-
     Returns
     -------
     model : torch.nn.Module
         The CLIP model
-
     preprocess : Callable[[PIL.Image], torch.Tensor]
         A torchvision transform that converts a PIL image into a tensor that the returned model can take as its input
     """
@@ -208,18 +202,14 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
 def tokenize(texts: Union[str, List[str]], context_length: int = 77, truncate: bool = False) -> Union[torch.IntTensor, torch.LongTensor]:
     """
     Returns the tokenized representation of given input string(s)
-
     Parameters
     ----------
     texts : Union[str, List[str]]
         An input string or a list of input strings to tokenize
-
     context_length : int
         The context length to use; all CLIP models use 77 as the context length
-
     truncate: bool
         Whether to truncate the text in case its encoding is longer than the context length
-
     Returns
     -------
     A two-dimensional tensor containing the resulting tokens, shape = [number of input strings, context_length].
@@ -312,17 +302,17 @@ def clip_feature_surgery(image_features, text_features, redundant_feats=None, t=
 def similarity_map_to_points(sm, shape, cv2_img, t=0.8, down_sample=2):
     side = int(sm.shape[0] ** 0.5)
     sm = sm.reshape(1, 1, side, side)
-    # sm1 = sm
+    sm1 = sm
     # down sample to smooth results
     down_side = side // down_sample
     sm = torch.nn.functional.interpolate(sm, (down_side, down_side), mode='bilinear')[0, 0, :, :]
-    # sm1 = torch.nn.functional.interpolate(sm1, (cv2_img.shape[0], cv2_img.shape[1]), mode='bilinear')[0, 0, :, :]
+    sm1 = torch.nn.functional.interpolate(sm1, (cv2_img.shape[0], cv2_img.shape[1]), mode='bilinear')[0, 0, :, :]
     h, w = sm.shape
     sm = sm.reshape(-1)
     sm = (sm - sm.min()) / (sm.max() - sm.min())
-    # sm1 = sm1.reshape(-1)
-    # sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
-    # sm1 = sm1.reshape(cv2_img.shape[0], cv2_img.shape[1])
+    sm1 = sm1.reshape(-1)
+    sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
+    sm1 = sm1.reshape(cv2_img.shape[0], cv2_img.shape[1])
     # import pdb
     # pdb.set_trace()
     rank = sm.sort(0)[1]
@@ -333,11 +323,12 @@ def similarity_map_to_points(sm, shape, cv2_img, t=0.8, down_sample=2):
     labels = np.ones(num * 2).astype('uint8')
     labels[num:] = 0
     points = []
-    # vis = (sm1.cpu().numpy() * 255).astype('uint8')
-    # vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
-    # th, imgx = cv2.threshold(vis, 0, 255, cv2.THRESH_OTSU)
+    vis = (sm.cpu().numpy() * 255).astype('uint8')
+    vis1 = sm1.cpu().numpy()
+    th, imgx = cv2.threshold(vis, 0, 255, cv2.THRESH_OTSU)
     # plt.imshow(imgx)
     # plt.savefig("./map1.jpg")
+    # vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
     # vis = cv2_img * 0.4 + vis * 0.6
     # vis = cv2.cvtColor(vis.astype('uint8'), cv2.COLOR_BGR2RGB)
     # plt.imshow(vis)
@@ -354,4 +345,4 @@ def similarity_map_to_points(sm, shape, cv2_img, t=0.8, down_sample=2):
         y = min((idx // w + 0.5) * scale_h, shape[0] - 1)
         points.append([int(x.item()), int(y.item())])
 
-    return points, labels
+    return points, labels, imgx
