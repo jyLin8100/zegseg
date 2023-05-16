@@ -66,6 +66,7 @@ parser.add_argument('--config', default='configs/mydemo.yaml')
 parser.add_argument('--cache_blip_filename', default='COD_GT_woPos') # COD, COD_woPos, COD_GT, COD_GT_woPos, COD_BLIP_GT_woPos
 parser.add_argument('--down_sample', type=int, default=2, help='down sample to generate points from CLIP surgery output') 
 parser.add_argument('--attn_thr', type=float, default=0.95, help='threshold for CLIP Surgery to get points from attention map') 
+parser.add_argument('--pt_topk', type=int, default=-1, help='for CLIP Surgery to get points from attention map, use points of top k highest socre as positive sampling points') 
 
 args = parser.parse_args()
 with open(args.config, 'r') as f:
@@ -145,7 +146,7 @@ val_metric2 = utils.Averager()
 val_metric3 = utils.Averager()
 val_metric4 = utils.Averager()
 
-for i, img_path, pairs in zip(range(data_len),paths_img, loader):
+for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
 # for img_path in ["demo_data/8.jpg", "demo_data/9.jpg"]:
     tensor_img = pairs['inp']
     tensor_gt = pairs['gt']
@@ -156,13 +157,13 @@ for i, img_path, pairs in zip(range(data_len),paths_img, loader):
     image = preprocess(pil_img).unsqueeze(0).to(device)
 
     if use_cache_blip:
-        # text = [blip_text_l[i][:-1]]  # lin
-        text = blip_text_l[i] 
+        # text = [blip_text_l[s_i][:-1]]  # lin
+        text = blip_text_l[s_i] 
     else:
         text = get_text_from_img(img_path, pil_img, BLIP_dict, BLIP_model, BLIP_vis_processors)
 
     predictor.set_image(np.array(pil_img))
-    print(i, text, img_path)
+    print(s_i, text, img_path)
 
     with torch.no_grad():
         # CLIP architecture surgery acts on the image encoder
@@ -192,12 +193,17 @@ for i, img_path, pairs in zip(range(data_len),paths_img, loader):
         # get positive points from individual maps (each sentence in the list), and negative points from the mean map
 
         map_l=[]
-        p, l, map = clip.similarity_map_to_points(sm_mean, cv2_img.shape[:2], cv2_img, t=args.attn_thr, down_sample=args.down_sample)
+        p, l, map = clip.similarity_map_to_points(sm_mean, cv2_img.shape[:2], cv2_img, t=args.attn_thr, 
+                                                    down_sample=args.down_sample,
+                                                    pt_topk=args.pt_topk)
         map_l.append(map)
+        num = len(p) // 2
         points = p[num:] # negatives in the second half
         labels = [l[num:]]
         for i in range(sm.shape[-1]):  
-            p, l, map = clip.similarity_map_to_points(sm[:, i], cv2_img.shape[:2], cv2_img, t=args.attn_thr, down_sample=args.down_sample)
+            p, l, map = clip.similarity_map_to_points(sm[:, i], cv2_img.shape[:2], cv2_img, t=args.attn_thr, 
+                                                        down_sample=args.down_sample,
+                                                        pt_topk=args.pt_topk)
             map_l.append(map)
             num = len(p) // 2
             points = points + p[:num] # positive in first half
@@ -247,10 +253,10 @@ for i, img_path, pairs in zip(range(data_len),paths_img, loader):
 
 
         ## visualization
-        if i%1==0 and i<10:
+        if s_i%1==0 and s_i<10:
             img_name = img_path.split('/')[-1][:-4]
-            for i in range(len(map_l)):    
-                plt.imsave(save_path_dir + img_name + f't_map_{i}_s{args.down_sample}.jpg', map_l[i])
+            # for i in range(len(map_l)):    
+            #     plt.imsave(save_path_dir + img_name + f't_map_{i}_s{args.down_sample}.jpg', map_l[i])
             save_path_sam = save_path_dir + img_name + f"_sam.jpg"
             save_path_gt = save_path_dir + img_name + f"_gt.jpg"
             plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')

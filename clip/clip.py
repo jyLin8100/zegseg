@@ -299,7 +299,7 @@ def clip_feature_surgery(image_features, text_features, redundant_feats=None, t=
 
 
 # sm shape N_t
-def similarity_map_to_points(sm, shape, cv2_img, t=0.8, down_sample=2):
+def similarity_map_to_points(sm, shape, cv2_img, t=0.8, down_sample=2, pt_topk=-1):
     side = int(sm.shape[0] ** 0.5)
     sm = sm.reshape(1, 1, side, side)
     sm1 = sm
@@ -320,6 +320,8 @@ def similarity_map_to_points(sm, shape, cv2_img, t=0.8, down_sample=2):
     scale_w = float(shape[1]) / w
 
     num = min((sm >= t).sum(), sm.shape[0] // 2)
+    if pt_topk > 0:
+        num = min(num, pt_topk)
     labels = np.ones(num * 2).astype('uint8')
     labels[num:] = 0
     points = []
