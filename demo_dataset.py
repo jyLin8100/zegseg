@@ -87,7 +87,11 @@ if os.path.exists(cache_blip_filename):
         blip_text_l.append(text[:-1].split(','))
         # print(blip_text_l)
     print(f"loading BLIP text output from file: {cache_blip_filename}, length:{len(blip_text_l)}")
-save_path_dir = f'output_img/{cache_blip_filename}/s{args.down_sample}_thr{args.attn_thr}_top{args.pt_topk}/'
+    
+save_dir_name = f'{cache_blip_filename}/s{args.down_sample}_thr{args.attn_thr}'
+if args.pt_topk > 0:
+    save_dir_name += f'_top{args.pt_topk}'
+save_path_dir = f'output_img/{save_dir_name}/'
 mkdir(save_path_dir)
 print(f'save_path_dir: {save_path_dir}')
 
@@ -195,11 +199,12 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
         map_l=[]
         p, l, map = clip.similarity_map_to_points(sm_mean, cv2_img.shape[:2], cv2_img, t=args.attn_thr, 
                                                     down_sample=args.down_sample,
-                                                    pt_topk=args.pt_topk)
+                                                    pt_topk=args.pt_topk) # p: [pos (min->max), neg(max->min)]
         map_l.append(map)
         num = len(p) // 2
         points = p[num:] # negatives in the second half
         labels = [l[num:]]
+        vis_radius = [np.linspace(4,1,num)]
         for i in range(sm.shape[-1]):  
             p, l, map = clip.similarity_map_to_points(sm[:, i], cv2_img.shape[:2], cv2_img, t=args.attn_thr, 
                                                         down_sample=args.down_sample,
@@ -208,9 +213,12 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
             num = len(p) // 2
             points = points + p[:num] # positive in first half
             labels.append(l[:num])
+
+            vis_radius.append(np.linspace(1,4,num))
         # import pdb
         # pdb.set_trace()      
         labels = np.concatenate(labels, 0)
+        vis_radius = np.concatenate(vis_radius, 0).astype('uint8')
 
         # print(f'sm.shape: {sm.shape}')
 
@@ -226,6 +234,12 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
         # vis[mask > 0] = vis[mask > 0] // 2 + np.array([153, 255, 255], dtype=np.uint8) // 2
         vis[mask > 0] = np.array(255, dtype=np.uint8) 
         vis[mask == 0] = np.array(0, dtype=np.uint8)
+        vis_pt = np.expand_dims(vis, axis=2).repeat(3, axis=2)
+        print(vis_pt.shape)
+        for i, [x, y] in enumerate(points):
+            # cv2.circle(vis_pt, (x, y), 3, (0, 102, 255) if labels[i] == 1 else (255, 102, 51), 3)
+            cv2.circle(vis_pt, (x, y), vis_radius[i], (255, 102, 51) if labels[i] == 1 else (0, 102, 255), vis_radius[i])
+    
 
         # align size of GT mask
         # vis = cv2.cvtColor(vis.astype('uint8'), cv2.COLOR_BGR2RGB)
@@ -257,10 +271,13 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
             img_name = img_path.split('/')[-1][:-4]
             # for i in range(len(map_l)):    
             #     plt.imsave(save_path_dir + img_name + f't_map_{i}_s{args.down_sample}.jpg', map_l[i])
+            save_path_sam_pt = save_path_dir + img_name + f"_sam_pt.jpg"
             save_path_sam = save_path_dir + img_name + f"_sam.jpg"
             save_path_gt = save_path_dir + img_name + f"_gt.jpg"
-            plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')
-            plt.imsave(save_path_gt, tensor_gt.view(1024,1024).numpy(), cmap='gray')
+            
+            plt.imsave(save_path_sam_pt, vis_pt)
+            # plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')
+            # plt.imsave(save_path_gt, tensor_gt.view(1024,1024).numpy(), cmap='gray')
         # for i, [x, y] in enumerate(points):
         #     cv2.circle(vis, (x, y), 3, (0, 102, 255) if labels[i] == 1 else (255, 102, 51), 3)
         vis = cv2.cvtColor(vis.astype('uint8'), cv2.COLOR_BGR2RGB)
