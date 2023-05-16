@@ -12,6 +12,7 @@ import argparse
 import yaml
 import datasets
 from torch.utils.data import DataLoader
+from torchvision import transforms
 
 BICUBIC = InterpolationMode.BICUBIC
 
@@ -172,25 +173,17 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
     with torch.no_grad():
         # CLIP architecture surgery acts on the image encoder
         image_features = model.encode_image(image)
-        image_features = image_features / image_features.norm(dim=1, keepdim=True)
+        image_features = image_features / image_features.norm(dim=1, keepdim=True)    # torch.Size([1, 197, 512])
 
         # Extract redundant features from an empty string
-        redundant_features = clip.encode_text_with_prompt_ensemble(model, [""], device)
+        redundant_features = clip.encode_text_with_prompt_ensemble(model, [""], device)  # torch.Size([1, 512])
 
         # Prompt ensemble for text features with normalization
-        text_features = clip.encode_text_with_prompt_ensemble(model, text, device)
+        text_features = clip.encode_text_with_prompt_ensemble(model, text, device)  # torch.Size([x, 512])
 
         # Combine features after removing redundant features and min-max norm
+        sm = clip.clip_feature_surgery(image_features, text_features, redundant_features)[0, 1:, :]  # 整个输出：torch.Size([1, 197, x])  # 最后的1，是text这个list 的长度。
 
-        sm = clip.clip_feature_surgery(image_features, text_features, redundant_features)[0, 1:, :]
-        # (Pdb) image_features.shape
-        # torch.Size([1, 197, 512])
-        # (Pdb) text_features.shape
-        # torch.Size([x, 512])
-        # (Pdb) redundant_features.shape
-        # torch.Size([1, 512])
-        # (Pdb) clip.clip_feature_surgery(image_features, text_features, redundant_features).shape
-        # torch.Size([1, 197, x])  # 最后的1，是text这个list 的长度。
         sm_norm = (sm - sm.min(0, keepdim=True)[0]) / (sm.max(0, keepdim=True)[0] - sm.min(0, keepdim=True)[0])
         sm_mean = sm_norm.mean(-1, keepdim=True)
 
@@ -213,17 +206,10 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
             num = len(p) // 2
             points = points + p[:num] # positive in first half
             labels.append(l[:num])
-
             vis_radius.append(np.linspace(1,4,num))
-        # import pdb
-        # pdb.set_trace()      
         labels = np.concatenate(labels, 0)
         vis_radius = np.concatenate(vis_radius, 0).astype('uint8')
 
-        # print(f'sm.shape: {sm.shape}')
-
-        # from pdb import set_trace
-        # set_trace()
         
         # Inference SAM with points from CLIP Surgery
         masks, scores, logits = predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True)
@@ -235,24 +221,19 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
         vis[mask > 0] = np.array(255, dtype=np.uint8) 
         vis[mask == 0] = np.array(0, dtype=np.uint8)
         vis_pt = np.expand_dims(vis, axis=2).repeat(3, axis=2)
-        print(vis_pt.shape)
         for i, [x, y] in enumerate(points):
             # cv2.circle(vis_pt, (x, y), 3, (0, 102, 255) if labels[i] == 1 else (255, 102, 51), 3)
             cv2.circle(vis_pt, (x, y), vis_radius[i], (255, 102, 51) if labels[i] == 1 else (0, 102, 255), vis_radius[i])
     
 
         # align size of GT mask
-        # vis = cv2.cvtColor(vis.astype('uint8'), cv2.COLOR_BGR2RGB)
         inp_size = 1024
-        from torchvision import transforms
         mask_transform = transforms.Compose([
                         transforms.Resize((inp_size, inp_size), interpolation=Image.NEAREST),
                         transforms.ToTensor(),
                     ])
         vis_tensor = Image.fromarray(vis)
         vis_tensor = mask_transform(vis_tensor)[0].view(1, 1, inp_size, inp_size)
-        # from pdb import set_trace
-        # set_trace()
 
 
         ## metric
@@ -274,19 +255,11 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
             save_path_sam_pt = save_path_dir + img_name + f"_sam_pt.jpg"
             save_path_sam = save_path_dir + img_name + f"_sam.jpg"
             save_path_gt = save_path_dir + img_name + f"_gt.jpg"
-            
             plt.imsave(save_path_sam_pt, vis_pt)
             # plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')
             # plt.imsave(save_path_gt, tensor_gt.view(1024,1024).numpy(), cmap='gray')
-        # for i, [x, y] in enumerate(points):
-        #     cv2.circle(vis, (x, y), 3, (0, 102, 255) if labels[i] == 1 else (255, 102, 51), 3)
         vis = cv2.cvtColor(vis.astype('uint8'), cv2.COLOR_BGR2RGB)
-        # print('SAM & CLIP Surgery for texts combination:', text)
-        # plt.imshow(vis)
-        # plt.show()
-        # plt.savefig("./9_sam.jpg")
-        # print(save_path)
-        # plt.imsave(save_path, vis)
+
 
 
 print(val_metric1.item(),                
