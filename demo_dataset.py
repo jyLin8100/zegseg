@@ -65,9 +65,12 @@ def get_text_from_img(img_path, pil_img, BLIP_dict=None, model=None, vis_process
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', default='configs/mydemo.yaml')
 parser.add_argument('--cache_blip_filename', default='COD_GT_woPos') # COD, COD_woPos, COD_GT, COD_GT_woPos, COD_BLIP_GT_woPos
-parser.add_argument('--down_sample', type=int, default=2, help='down sample to generate points from CLIP surgery output') 
+parser.add_argument('--down_sample', type=float, default=2, help='down sample to generate points from CLIP surgery output') 
 parser.add_argument('--attn_thr', type=float, default=0.95, help='threshold for CLIP Surgery to get points from attention map') 
 parser.add_argument('--pt_topk', type=int, default=-1, help='for CLIP Surgery to get points from attention map, use points of top k highest socre as positive sampling points') 
+parser.add_argument('--recursive', type=int, default=0, help='recursive times to use CLIP surgery, to get the point') 
+parser.add_argument('--recursive_coef', type=float, default=0.3, help='recursive coefficient to use CLIP surgery, to get the point') 
+parser.add_argument('--rdd_str', type=str, default='', help='text for redundant features as input of clip surgery') 
 
 args = parser.parse_args()
 with open(args.config, 'r') as f:
@@ -92,6 +95,14 @@ if os.path.exists(cache_blip_filename):
 save_dir_name = f'{cache_blip_filename}/s{args.down_sample}_thr{args.attn_thr}'
 if args.pt_topk > 0:
     save_dir_name += f'_top{args.pt_topk}'
+if args.recursive > 0:
+    save_dir_name += f'_rcur{args.recursive}'
+    if args.recursive_coef!=.3:
+        save_dir_name += f'_{args.recursive_coef}'
+if args.rdd_str != '':
+    save_dir_name += f'_rdd{args.rdd_str}'
+
+
 save_path_dir = f'output_img/{save_dir_name}/'
 mkdir(save_path_dir)
 print(f'save_path_dir: {save_path_dir}')
@@ -176,7 +187,7 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
         image_features = image_features / image_features.norm(dim=1, keepdim=True)    # torch.Size([1, 197, 512])
 
         # Extract redundant features from an empty string
-        redundant_features = clip.encode_text_with_prompt_ensemble(model, [""], device)  # torch.Size([1, 512])
+        redundant_features = clip.encode_text_with_prompt_ensemble(model, [args.rdd_str], device)  # torch.Size([1, 512])
 
         # Prompt ensemble for text features with normalization
         text_features = clip.encode_text_with_prompt_ensemble(model, text, device)  # torch.Size([x, 512])
@@ -186,6 +197,34 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
 
         sm_norm = (sm - sm.min(0, keepdim=True)[0]) / (sm.max(0, keepdim=True)[0] - sm.min(0, keepdim=True)[0])
         sm_mean = sm_norm.mean(-1, keepdim=True)
+
+        vis_input_img = []
+        cur_image = np.array(pil_img)
+        vis_input_img.append(cur_image)
+        if args.recursive>0:
+            vis_map_img = []
+            sm1 = sm_mean
+
+        for i in range(args.recursive):
+            side = int(sm1.shape[0] ** 0.5)
+            sm1 = sm1.reshape(1, 1, side, side)
+            sm1 = torch.nn.functional.interpolate(sm1, (cur_image.shape[0], cur_image.shape[1]), mode='bilinear')[0, 0, :, :].unsqueeze(-1)
+            sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
+
+            sm1 = sm1.cpu().numpy()
+            cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+            vis_input_img.append(cur_image.astype('uint8'))
+            vis_map_img.append((255*sm1[...,0]).astype('uint8'))
+
+            cur_input_image = Image.fromarray(cur_image.astype(np.uint8))
+            cur_input_image = preprocess(cur_input_image).unsqueeze(0).to(device)
+            image_features = model.encode_image(cur_input_image)
+            image_features = image_features / image_features.norm(dim=1, keepdim=True)    # torch.Size([1, 197, 512])
+            sm = clip.clip_feature_surgery(image_features, text_features, redundant_features)[0, 1:, :]  # 整个输出：torch.Size([1, 197, x])  # 最后的1，是text这个list 的长度。
+            sm_norm = (sm - sm.min(0, keepdim=True)[0]) / (sm.max(0, keepdim=True)[0] - sm.min(0, keepdim=True)[0])
+            sm_mean = sm_norm.mean(-1, keepdim=True)
+            sm1 = sm_mean
+            
 
         # get positive points from individual maps (each sentence in the list), and negative points from the mean map
 
@@ -206,7 +245,7 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
             num = len(p) // 2
             points = points + p[:num] # positive in first half
             labels.append(l[:num])
-            vis_radius.append(np.linspace(1,4,num))
+            vis_radius.append(np.linspace(2,5,num))
         labels = np.concatenate(labels, 0)
         vis_radius = np.concatenate(vis_radius, 0).astype('uint8')
 
@@ -224,7 +263,11 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
         for i, [x, y] in enumerate(points):
             # cv2.circle(vis_pt, (x, y), 3, (0, 102, 255) if labels[i] == 1 else (255, 102, 51), 3)
             cv2.circle(vis_pt, (x, y), vis_radius[i], (255, 102, 51) if labels[i] == 1 else (0, 102, 255), vis_radius[i])
-    
+            cv2.circle(vis_input_img[0], (x, y), vis_radius[i], (255, 102, 51) if labels[i] == 1 else (0, 102, 255), vis_radius[i])
+            if args.recursive>0:
+                cv2.circle(vis_map_img[-1], (x, y), vis_radius[i], (255, 102, 51) if labels[i] == 1 else (0, 102, 255), vis_radius[i])
+                cv2.circle(vis_input_img[-1], (x, y), vis_radius[i], (255, 102, 51) if labels[i] == 1 else (0, 102, 255), vis_radius[i])
+     
 
         # align size of GT mask
         inp_size = 1024
@@ -252,6 +295,13 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
             img_name = img_path.split('/')[-1][:-4]
             # for i in range(len(map_l)):    
             #     plt.imsave(save_path_dir + img_name + f't_map_{i}_s{args.down_sample}.jpg', map_l[i])
+            if args.recursive>0:
+                for i in range(len(vis_map_img)):    
+                    plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_map_img[i])
+                for i in range(len(vis_input_img)):    
+                    plt.imsave(save_path_dir + img_name + f'_iptImg{i}.jpg', vis_input_img[i])
+                
+        
             save_path_sam_pt = save_path_dir + img_name + f"_sam_pt.jpg"
             save_path_sam = save_path_dir + img_name + f"_sam.jpg"
             save_path_gt = save_path_dir + img_name + f"_gt.jpg"

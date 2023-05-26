@@ -304,7 +304,7 @@ def similarity_map_to_points(sm, shape, cv2_img, t=0.8, down_sample=2, pt_topk=-
     sm = sm.reshape(1, 1, side, side)
     sm1 = sm
     # down sample to smooth results
-    down_side = side // down_sample
+    down_side = int(side // down_sample)
     sm = torch.nn.functional.interpolate(sm, (down_side, down_side), mode='bilinear')[0, 0, :, :]
     sm1 = torch.nn.functional.interpolate(sm1, (cv2_img.shape[0], cv2_img.shape[1]), mode='bilinear')[0, 0, :, :]
     h, w = sm.shape
