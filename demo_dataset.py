@@ -119,16 +119,6 @@ print("dataset size:", len(paths_img))
 if len(blip_text_l)>0:
     assert data_len==len(blip_text_l)
 
-# for img_path, pair in zip(paths_img, loader):
-#     print(img_path,)
-#     print( pair['gt'].size())#({'inp':, 'gt':} (1,3,h,w)
-# for img_path, pairs in zip(paths_img, loader):
-#     tensor_img = pairs['inp']
-#     tensor_gt = pairs['gt']
-#     pil_img = Image.open(img_path).convert("RGB")
-#     cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-#     print(cv2_img.shape, tensor_img.shape, tensor_gt.shape)
-
 ## load model
 # clip
 import clip
@@ -162,8 +152,8 @@ val_metric2 = utils.Averager()
 val_metric3 = utils.Averager()
 val_metric4 = utils.Averager()
 
+
 for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
-# for img_path in ["demo_data/8.jpg", "demo_data/9.jpg"]:
     tensor_img = pairs['inp']
     tensor_gt = pairs['gt']
     pil_img = Image.open(img_path).convert("RGB")
@@ -227,7 +217,6 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
             
 
         # get positive points from individual maps (each sentence in the list), and negative points from the mean map
-
         map_l=[]
         p, l, map = clip.similarity_map_to_points(sm_mean, cv2_img.shape[:2], cv2_img, t=args.attn_thr, 
                                                     down_sample=args.down_sample,
@@ -256,12 +245,10 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
         mask = mask.astype('uint8')
         # Visualize the results
         vis = cv2_img[...,0].copy()
-        # vis[mask > 0] = vis[mask > 0] // 2 + np.array([153, 255, 255], dtype=np.uint8) // 2
         vis[mask > 0] = np.array(255, dtype=np.uint8) 
         vis[mask == 0] = np.array(0, dtype=np.uint8)
         vis_pt = np.expand_dims(vis, axis=2).repeat(3, axis=2)
         for i, [x, y] in enumerate(points):
-            # cv2.circle(vis_pt, (x, y), 3, (0, 102, 255) if labels[i] == 1 else (255, 102, 51), 3)
             cv2.circle(vis_pt, (x, y), vis_radius[i], (255, 102, 51) if labels[i] == 1 else (0, 102, 255), vis_radius[i])
             cv2.circle(vis_input_img[0], (x, y), vis_radius[i], (255, 102, 51) if labels[i] == 1 else (0, 102, 255), vis_radius[i])
             if args.recursive>0:
@@ -293,8 +280,6 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
         ## visualization
         if s_i%1==0 and s_i<10:
             img_name = img_path.split('/')[-1][:-4]
-            # for i in range(len(map_l)):    
-            #     plt.imsave(save_path_dir + img_name + f't_map_{i}_s{args.down_sample}.jpg', map_l[i])
             if args.recursive>0:
                 for i in range(len(vis_map_img)):    
                     plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_map_img[i])
@@ -303,9 +288,9 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
                 
         
             save_path_sam_pt = save_path_dir + img_name + f"_sam_pt.jpg"
-            save_path_sam = save_path_dir + img_name + f"_sam.jpg"
-            save_path_gt = save_path_dir + img_name + f"_gt.jpg"
             plt.imsave(save_path_sam_pt, vis_pt)
+            # save_path_sam = save_path_dir + img_name + f"_sam.jpg"
+            # save_path_gt = save_path_dir + img_name + f"_gt.jpg"
             # plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')
             # plt.imsave(save_path_gt, tensor_gt.view(1024,1024).numpy(), cmap='gray')
         vis = cv2.cvtColor(vis.astype('uint8'), cv2.COLOR_BGR2RGB)
