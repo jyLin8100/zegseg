@@ -30,10 +30,15 @@ parser.add_argument('--recursive', type=int, default=0, help='recursive times to
 parser.add_argument('--recursive_coef', type=float, default=0.3, help='recursive coefficient to use CLIP surgery, to get the point') 
 parser.add_argument('--rdd_str', type=str, default='', help='text for redundant features as input of clip surgery') 
 parser.add_argument('--clip_model', type=str, default='CS-ViT-B/16', help='model for clip surgery') 
+parser.add_argument('--clip_use_neg_text', type=bool, default=False, help='negative text input for clip surgery') 
+parser.add_argument('--clip_neg_text_attn_thr', type=float, default=-1, help='negative threshold for clip surgery') 
+
 
 args = parser.parse_args()
 with open(args.config, 'r') as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
+if args.clip_neg_text_attn_thr < 0:
+    args.clip_neg_text_attn_thr = args.attn_thr
 print(f'args:\n{args}\n')
 spec = config['test_dataset']
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -57,6 +62,8 @@ if args.recursive > 0:
     save_dir_name += f'_rcur{args.recursive}'
     if args.recursive_coef!=.3:
         save_dir_name += f'_{args.recursive_coef}'
+if args.clip_use_neg_text:
+    save_dir_name += f'_neg{args.clip_neg_text_attn_thr}'
 if args.rdd_str != '':
     save_dir_name += f'_rdd{args.rdd_str}'
 
@@ -125,6 +132,13 @@ for s_i, img_path, pairs in zip(range(data_len),paths_img, loader):
 
         # get positive points from individual maps (each sentence in the list), and negative points from the mean map
         points, labels, vis_radius, num = heatmap2points(sm, sm_mean, cv2_img, args)
+
+        if args.clip_use_neg_text:
+            sm_mean_n, sm_n, vis_map_img_n, vis_input_img_n = get_heatmap(pil_img, ['background'], args, device)
+            points_n, labels_n, vis_radius_n, num_n = heatmap2points(sm_n, sm_mean_n, cv2_img, args, attn_thr=args.clip_neg_text_attn_thr )
+            points = points + points_n[-num_n:]
+            labels = np.concatenate([labels, 1-labels_n[-num_n:]], 0)
+            vis_radius = np.concatenate([vis_radius, vis_radius_n[-num_n:]], 0)
 
         # Inference SAM with points from CLIP Surgery
         predictor.set_image(np.array(pil_img))

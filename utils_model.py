@@ -99,9 +99,11 @@ def get_text_from_img(img_path, pil_img, BLIP_dict=None, model=None, vis_process
     print('text:', text)
     return text
 
-def heatmap2points(sm, sm_mean, cv2_img, args):
+def heatmap2points(sm, sm_mean, cv2_img, args, attn_thr=-1):
+    if attn_thr < 0:
+        attn_thr = args.attn_thr
     map_l=[]
-    p, l, map = clip.similarity_map_to_points(sm_mean, cv2_img.shape[:2], cv2_img, t=args.attn_thr, 
+    p, l, map = clip.similarity_map_to_points(sm_mean, cv2_img.shape[:2], cv2_img, t=attn_thr, 
                                                 down_sample=args.down_sample,
                                                 pt_topk=args.pt_topk) # p: [pos (min->max), neg(max->min)]
     map_l.append(map)
@@ -110,7 +112,7 @@ def heatmap2points(sm, sm_mean, cv2_img, args):
     labels = [l[num:]]
     vis_radius = [np.linspace(4,1,num)]
     for i in range(sm.shape[-1]):  
-        p, l, map = clip.similarity_map_to_points(sm[:, i], cv2_img.shape[:2], cv2_img, t=args.attn_thr, 
+        p, l, map = clip.similarity_map_to_points(sm[:, i], cv2_img.shape[:2], cv2_img, t=attn_thr, 
                                                     down_sample=args.down_sample,
                                                     pt_topk=args.pt_topk)
         map_l.append(map)
