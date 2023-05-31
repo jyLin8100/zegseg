@@ -1,13 +1,46 @@
 import clip
 import torch
+import cv2
 import numpy as np
 from PIL import Image
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize, InterpolationMode
+import torch.nn.functional as F
+import datetime
 BICUBIC = InterpolationMode.BICUBIC
 
-def get_heatmap(pil_img, text, args, device='cuda'):
-    model, _ = clip.load(args.clip_model, device=device)
-    model.eval()
+def get_mask(pil_img, text, sam_predictor, clip_model, args, device):
+
+    cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+    with torch.no_grad():
+        # get heatmap
+        sm_mean, sm, vis_map_img, vis_input_img = get_heatmap(pil_img, text, clip_model, args, device)
+
+        # get positive points from individual maps (each sentence in the list), and negative points from the mean map
+        points, labels, vis_radius, num = heatmap2points(sm, sm_mean, cv2_img, args)
+
+        if args.clip_use_neg_text:
+            sm_mean_n, sm_n, vis_map_img_n, vis_input_img_n = get_heatmap(pil_img, ['background'], clip_model, args, device)
+            points_n, labels_n, vis_radius_n, num_n = heatmap2points(sm_n, sm_mean_n, cv2_img, args, attn_thr=args.clip_neg_text_attn_thr )
+            points = points + points_n[-num_n:]
+            labels = np.concatenate([labels, 1+labels_n[-num_n:]], 0)
+            vis_radius = np.concatenate([vis_radius, vis_radius_n[-num_n:]], 0)
+
+        # Inference SAM with points from CLIP Surgery
+        sam_predictor.set_image(np.array(pil_img))
+        masks_logit, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True)
+        mask_logit = masks_logit[np.argmax(scores)]
+        mask = mask_logit > sam_predictor.model.mask_threshold
+        mask_logit = F.sigmoid(torch.from_numpy(mask_logit)).numpy() * 255
+        mask = mask.astype('uint8')
+        mask_logit = mask_logit.astype('uint8')
+    vis_dict = {'vis_map_img': vis_map_img,
+                'vis_input_img': vis_input_img, 
+                'vis_radius': vis_radius}
+        
+    return mask, mask_logit, points, labels, num, vis_dict
+
+def get_heatmap(pil_img, text, model, args, device='cuda'):
+    
     preprocess =  Compose([Resize((224, 224), interpolation=BICUBIC), ToTensor(),
             Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))])
     image = preprocess(pil_img).unsqueeze(0).to(device)
@@ -30,23 +63,23 @@ def get_heatmap(pil_img, text, args, device='cuda'):
 
     vis_input_img = []
     cur_image = np.array(pil_img)
-    vis_input_img.append(cur_image)
+    # vis_input_img.append(cur_image)
     vis_map_img = []
 
-    if args.recursive>0:
-        sm1 = sm_mean
+    sm1 = sm_mean
+    side = int(sm1.shape[0] ** 0.5)
+    sm1 = sm1.reshape(1, 1, side, side)
+    sm1 = torch.nn.functional.interpolate(sm1, (cur_image.shape[0], cur_image.shape[1]), mode='bilinear')[0, 0, :, :].unsqueeze(-1)
+    sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
+    sm1 = sm1.cpu().numpy()
+    cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+    vis_input_img.append(cur_image.astype('uint8'))
+    vis_map_img.append((255*sm1[...,0]).astype('uint8'))
+
+    # if args.recursive>0:
+        
 
     for i in range(args.recursive):
-        side = int(sm1.shape[0] ** 0.5)
-        sm1 = sm1.reshape(1, 1, side, side)
-        sm1 = torch.nn.functional.interpolate(sm1, (cur_image.shape[0], cur_image.shape[1]), mode='bilinear')[0, 0, :, :].unsqueeze(-1)
-        sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
-
-        sm1 = sm1.cpu().numpy()
-        cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
-        vis_input_img.append(cur_image.astype('uint8'))
-        vis_map_img.append((255*sm1[...,0]).astype('uint8'))
-
         cur_input_image = Image.fromarray(cur_image.astype(np.uint8))
         cur_input_image = preprocess(cur_input_image).unsqueeze(0).to(device)
         image_features = model.encode_image(cur_input_image)
@@ -55,6 +88,16 @@ def get_heatmap(pil_img, text, args, device='cuda'):
         sm_norm = (sm - sm.min(0, keepdim=True)[0]) / (sm.max(0, keepdim=True)[0] - sm.min(0, keepdim=True)[0])
         sm_mean = sm_norm.mean(-1, keepdim=True)
         sm1 = sm_mean
+
+        side = int(sm1.shape[0] ** 0.5)
+        sm1 = sm1.reshape(1, 1, side, side)
+        sm1 = torch.nn.functional.interpolate(sm1, (cur_image.shape[0], cur_image.shape[1]), mode='bilinear')[0, 0, :, :].unsqueeze(-1)
+        sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
+        sm1 = sm1.cpu().numpy()
+        cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+        vis_input_img.append(cur_image.astype('uint8'))
+        vis_map_img.append((255*sm1[...,0]).astype('uint8'))
+
 
     return sm_mean, sm, vis_map_img, vis_input_img
 
@@ -124,3 +167,7 @@ def heatmap2points(sm, sm_mean, cv2_img, args, attn_thr=-1):
     vis_radius = np.concatenate(vis_radius, 0).astype('uint8')
 
     return points, labels, vis_radius, num
+
+def printd(str):
+    dt = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(dt+'\t '+str)
