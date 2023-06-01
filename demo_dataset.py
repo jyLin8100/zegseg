@@ -181,7 +181,7 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         # save_path_gt = save_path_dir + img_name + f"_gt.jpg"
         # plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')
         # plt.imsave(save_path_gt, tensor_gt.view(1024,1024).numpy(), cmap='gray')
-    if s_i>3:   break
+
 print(val_metric1.item(),                
                 val_metric2.item(),
                 val_metric3.item(),
