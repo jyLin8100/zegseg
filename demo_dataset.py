@@ -11,7 +11,7 @@ import yaml
 import datasets
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from utils_model import get_text_from_img, get_mask, printd
+from utils_model import get_text_from_img, get_mask, get_fused_mask, printd, reset_params, get_dir_from_args
 import os
 
 def mkdir(path):
@@ -22,6 +22,7 @@ def mkdir(path):
 ## configs
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', default='configs/mydemo.yaml')
+parser.add_argument('--multi_mask_fusion', type=bool, default=False, help='fuse multiple masks') 
 parser.add_argument('--cache_blip_filename', default='COD_GT_woPos') # COD, COD_woPos, COD_GT, COD_GT_woPos, COD_BLIP_GT_woPos
 parser.add_argument('--clip_model', type=str, default='CS-ViT-B/16', help='model for clip surgery') 
 parser.add_argument('--sam_checkpoint', type=str, default='sam_vit_h_4b8939.pth', help='') 
@@ -55,23 +56,12 @@ if os.path.exists(cache_blip_filename):
     for text in cache_blip_file:
         blip_text_l.append(text[:-1].split(','))
     printd(f"loading BLIP text output from file: {cache_blip_filename}, length:{len(blip_text_l)}")
-    
-save_dir_name = f'{cache_blip_filename}/s{args.down_sample}_thr{args.attn_thr}'
-if args.pt_topk > 0:
-    save_dir_name += f'_top{args.pt_topk}'
-if args.recursive > 0:
-    save_dir_name += f'_rcur{args.recursive}'
-    if args.recursive_coef!=.3:
-        save_dir_name += f'_{args.recursive_coef}'
-if args.clip_use_neg_text:
-    save_dir_name += f'_neg{args.clip_neg_text_attn_thr}'
-if args.rdd_str != '':
-    save_dir_name += f'_rdd{args.rdd_str}'
-if args.clip_attn_qkv_strategy!='vv':
-    save_dir_name += f'_qkv{args.clip_attn_qkv_strategy}'
-save_path_dir = f'output_img/{save_dir_name}/'
+
+parent_dir = f'output_img/{cache_blip_filename}/'
+save_path_dir = get_dir_from_args(args, config, parent_dir)
+
+
 mkdir(save_path_dir)
-printd(f'{save_dir_name} ({args}')
 printd(f'save_path_dir: {save_path_dir}')
 
 ## get data
@@ -125,10 +115,14 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
     else:
         text = get_text_from_img(img_path, pil_img, BLIP_dict, BLIP_model, BLIP_vis_processors, device)
     
-    mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device)
-    vis_map_img = vis_dict['vis_map_img']
-    vis_input_img = vis_dict['vis_input_img'] 
-    vis_radius = vis_dict['vis_radius']
+
+    if args.multi_mask_fusion:
+        mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict = get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config)
+    else:
+        mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device)
+        vis_map_img = vis_dict['vis_map_img']
+        vis_input_img = vis_dict['vis_input_img']
+        vis_radius = vis_dict['vis_radius']
 
     ## metric
     # align size of GT mask first
@@ -153,25 +147,26 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
     ## visualization
     if s_i%1==0 and s_i<10:
         vis_pt = np.expand_dims(255*mask, axis=2).repeat(3, axis=2)
-        for i, [x, y] in enumerate(points):
-            
-            if labels[i] == 0:
-                clr = (0, 102, 255)
-            elif labels[i] == 1:
-                clr = (255, 102, 51)
-            else:
-                clr = (0, 255, 102)
-            cv2.circle(vis_pt, (x, y), vis_radius[i], clr, vis_radius[i])
-            if args.recursive>0:
-                # cv2.circle(vis_map_img[-1], (x, y), vis_radius[i], clr, vis_radius[i])
-                cv2.circle(vis_input_img[-1], (x, y), vis_radius[i], clr, vis_radius[i])
-    
         img_name = img_path.split('/')[-1][:-4]
-        if args.recursive>0:
-            for i in range(len(vis_map_img)):    
-                plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_map_img[i])
-            for i in range(len(vis_input_img)):    
-                plt.imsave(save_path_dir + img_name + f'_iptImg{i}.jpg', vis_input_img[i])
+        if not args.multi_mask_fusion:
+            for i, [x, y] in enumerate(points):
+                
+                if labels[i] == 0:
+                    clr = (0, 102, 255)
+                elif labels[i] == 1:
+                    clr = (255, 102, 51)
+                else:
+                    clr = (0, 255, 102)
+                cv2.circle(vis_pt, (x, y), vis_radius[i], clr, vis_radius[i])
+                if args.recursive>0:
+                    # cv2.circle(vis_map_img[-1], (x, y), vis_radius[i], clr, vis_radius[i])
+                    cv2.circle(vis_input_img[-1], (x, y), vis_radius[i], clr, vis_radius[i])
+        
+            if args.recursive>0:
+                for i in range(len(vis_map_img)):    
+                    plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_map_img[i])
+                for i in range(len(vis_input_img)):    
+                    plt.imsave(save_path_dir + img_name + f'_iptImg{i}.jpg', vis_input_img[i])
     
         save_path_sam_pt = save_path_dir + img_name + f"_sam_pt.jpg"
         save_path_sam_pt_logit = save_path_dir + img_name + f"_sam_pt_logit.jpg"

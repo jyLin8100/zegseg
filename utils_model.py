@@ -8,6 +8,29 @@ import torch.nn.functional as F
 import datetime
 BICUBIC = InterpolationMode.BICUBIC
 
+def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config):
+    mask_l = []
+    mask_logit_l = []
+    mask_logit_origin_l = []
+
+    num_mask = len(config['mask_params']['down_sample'])
+    for idx in range(num_mask):
+        reset_params(args, config, idx)
+        mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict = \
+                get_mask(pil_img, text, sam_predictor, clip_model, args, device)
+        mask_l.append(mask.astype('float'))
+        mask_logit_l.append(mask_logit.astype('float'))
+        mask_logit_origin_l.append(mask_logit_origin)
+
+    # mask = sum(mask_l)/num_mask
+    mask_logit = sum(mask_logit_l)/num_mask
+    mask_logit_origin = sum(mask_logit_origin_l)/num_mask
+    mask = mask_logit_origin > sam_predictor.model.mask_threshold
+    mask_logit = mask_logit.astype('uint8')
+    mask = mask.astype('uint8')
+
+    return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
+
 def get_mask(pil_img, text, sam_predictor, clip_model, args, device):
 
     cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
@@ -171,3 +194,57 @@ def heatmap2points(sm, sm_mean, cv2_img, args, attn_thr=-1):
 def printd(str):
     dt = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print(dt+'\t '+str)
+
+def reset_params(args, config, idx):
+    params = config['mask_params']
+    args.down_sample = params['down_sample'][idx]
+    args.attn_thr = params['attn_thr'][idx]
+    args.pt_topk = params['pt_topk'][idx]
+    args.recursive = params['recursive'][idx]
+    args.recursive_coef = params['recursive_coef'][idx]
+    args.rdd_str = params['rdd_str'][idx]
+    args.clip_use_neg_text = params['clip_use_neg_text'][idx]
+    args.clip_neg_text_attn_thr = params['clip_neg_text_attn_thr'][idx]
+
+def get_dir_from_args(args, config=None, parent_dir='output_img/'):
+    if args.multi_mask_fusion:
+        parent_dir += f'cfg_{args.config[:-5]}'
+        if args.clip_attn_qkv_strategy!='vv':
+            parent_dir += f'_qkv{args.clip_attn_qkv_strategy}'
+        num_mask = len(config['mask_params']['down_sample'])
+        printd(f'fusing: {parent_dir.split("/")[-1]}')
+        for idx in range(num_mask):
+            reset_params(args, config, idx)
+            cur_param_str = f's{args.down_sample}_thr{args.attn_thr}'
+            if args.pt_topk > 0:
+                cur_param_str += f'_top{args.pt_topk}'
+            if args.recursive > 0:
+                cur_param_str += f'_rcur{args.recursive}'
+                if args.recursive_coef!=.3:
+                    cur_param_str += f'_{args.recursive_coef}'
+            if args.clip_use_neg_text:
+                cur_param_str += f'_neg{args.clip_neg_text_attn_thr}'
+            if args.rdd_str != '':
+                cur_param_str += f'_rdd{args.rdd_str}'
+            print(f'\t {cur_param_str} ({args})')
+        save_path_dir = f'{parent_dir}/'
+    else:
+        exp_name = f's{args.down_sample}_thr{args.attn_thr}'
+        if args.pt_topk > 0:
+            exp_name += f'_top{args.pt_topk}'
+        if args.recursive > 0:
+            exp_name += f'_rcur{args.recursive}'
+            if args.recursive_coef!=.3:
+                exp_name += f'_{args.recursive_coef}'
+        if args.clip_use_neg_text:
+            exp_name += f'_neg{args.clip_neg_text_attn_thr}'
+        if args.rdd_str != '':
+            exp_name += f'_rdd{args.rdd_str}'
+        if args.clip_attn_qkv_strategy!='vv':
+            exp_name += f'_qkv{args.clip_attn_qkv_strategy}'
+        save_path_dir = f'{parent_dir+exp_name}/'
+        printd(f'{exp_name} ({args}')
+
+    return save_path_dir
+
+        
