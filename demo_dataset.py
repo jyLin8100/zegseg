@@ -34,17 +34,16 @@ parser.add_argument('--recursive', type=int, default=0, help='recursive times to
 parser.add_argument('--recursive_coef', type=float, default=0.3, help='recursive coefficient to use CLIP surgery, to get the point') 
 parser.add_argument('--rdd_str', type=str, default='', help='text for redundant features as input of clip surgery') 
 parser.add_argument('--clip_use_neg_text', type=bool, default=False, help='negative text input for clip surgery') 
-parser.add_argument('--clip_neg_text_attn_thr', type=float, default=-1, help='negative threshold for clip surgery') 
+parser.add_argument('--clip_neg_text_attn_thr', type=float, default=0.8, help='negative threshold for clip surgery') 
+parser.add_argument('--clip_attn_qkv_strategy', type=str, default='vv', help='qkv attention strategy for clip surgery')  # vv(original), kk
 
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 args = parser.parse_args()
 with open(args.config, 'r') as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
-if args.clip_neg_text_attn_thr < 0:
-    args.clip_neg_text_attn_thr = args.attn_thr
-printd(f'args:\n{args}\n')
 spec = config['test_dataset']
-device = "cuda" if torch.cuda.is_available() else "cpu"
 dataset_name = spec['dataset']['args']['root_path_1'].split('/')[2]
 if args.cache_blip_filename is not None:
     cache_blip_filename = f'blip_cache/{args.cache_blip_filename}'
@@ -68,10 +67,11 @@ if args.clip_use_neg_text:
     save_dir_name += f'_neg{args.clip_neg_text_attn_thr}'
 if args.rdd_str != '':
     save_dir_name += f'_rdd{args.rdd_str}'
-
-
+if args.clip_attn_qkv_strategy!='vv':
+    save_dir_name += f'_qkv{args.clip_attn_qkv_strategy}'
 save_path_dir = f'output_img/{save_dir_name}/'
 mkdir(save_path_dir)
+printd(f'{save_dir_name} ({args}')
 printd(f'save_path_dir: {save_path_dir}')
 
 ## get data
@@ -93,7 +93,8 @@ import clip
 sam = sam_model_registry[args.sam_model_type](checkpoint=args.sam_checkpoint)
 sam.to(device=device)
 sam_predictor = SamPredictor(sam)
-clip_model, _ = clip.load(args.clip_model, device=device)
+clip_params={ 'attn_qkv_strategy':args.clip_attn_qkv_strategy}
+clip_model, _ = clip.load(args.clip_model, device=device, params=clip_params)
 clip_model.eval()
 use_cache_blip = True
 if len(blip_text_l)==0:
@@ -117,14 +118,14 @@ val_metric4 = utils.Averager()
 
 ## run model
 for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
-    
+
     pil_img = Image.open(img_path).convert("RGB")
     if use_cache_blip:
         text = blip_text_l[s_i] 
     else:
         text = get_text_from_img(img_path, pil_img, BLIP_dict, BLIP_model, BLIP_vis_processors, device)
     
-    mask, mask_logit, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device)
+    mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device)
     vis_map_img = vis_dict['vis_map_img']
     vis_input_img = vis_dict['vis_input_img'] 
     vis_radius = vis_dict['vis_radius']
@@ -180,7 +181,7 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         # save_path_gt = save_path_dir + img_name + f"_gt.jpg"
         # plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')
         # plt.imsave(save_path_gt, tensor_gt.view(1024,1024).numpy(), cmap='gray')
-
+    if s_i>3:   break
 print(val_metric1.item(),                
                 val_metric2.item(),
                 val_metric3.item(),

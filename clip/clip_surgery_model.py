@@ -56,7 +56,7 @@ class Bottleneck(nn.Module):
 
 # implement attention module for v-v self-attention
 class Attention(nn.Module):
-    def __init__(self, out_dim, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., settings=''):
+    def __init__(self, out_dim, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., settings='', attn_qkv_strategy='vv'):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -67,6 +67,8 @@ class Attention(nn.Module):
         self.proj = nn.Linear(out_dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
         self.settings = settings
+
+        self.attn_qkv_strategy = attn_qkv_strategy
 
     def forward(self, x):
         B, N, C = x.shape
@@ -79,8 +81,15 @@ class Attention(nn.Module):
         attn_ori = self.attn_drop(attn_ori)
 
         # replace k & q by v
-        k = v
-        q = k
+        if self.attn_qkv_strategy=='vv':
+            k = v
+            q = k
+        elif self.attn_qkv_strategy=='kk':
+            q = k
+        else:
+            k = v
+            q = k
+        # print(self.attn_qkv_strategy)
 
         # resnets have only one self-attention, norm and larger scale perform better
         if self.settings == 'resnet':
@@ -104,7 +113,7 @@ class Attention(nn.Module):
 
 
 class AttentionPool2d(nn.Module):
-    def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
+    def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None, attn_qkv_strategy:str='vv'):
         super().__init__()
         self.positional_embedding = nn.Parameter(torch.randn(spacial_dim ** 2 + 1, embed_dim) / embed_dim ** 0.5)
         self.k_proj = nn.Linear(embed_dim, embed_dim)
@@ -118,11 +127,12 @@ class AttentionPool2d(nn.Module):
         self.num_heads = num_heads
         self.output_dim = output_dim
 
+        self.attn_qkv_strategy = attn_qkv_strategy
 
     def forward(self, x):
         # reform transformer layer after init and load weights, using v only
         if self.attn == None:
-            self.attn = Attention(self.output_dim, self.embed_dim, self.num_heads, True)
+            self.attn = Attention(self.output_dim, self.embed_dim, self.num_heads, True, attn_qkv_strategy=self.attn_qkv_strategy)
             self.attn.qkv.weight = torch.nn.Parameter(torch.cat([self.v_proj.weight, self.v_proj.weight, self.v_proj.weight], 0))
             self.attn.qkv.bias = torch.nn.Parameter(torch.cat([self.v_proj.bias, self.v_proj.bias, self.v_proj.bias]))
             self.attn.proj.weight = self.c_proj.weight
@@ -157,7 +167,7 @@ class ModifiedResNet(nn.Module):
     - The final pooling layer is a QKV attention instead of an average pool
     """
 
-    def __init__(self, layers, output_dim, heads, input_resolution=224, width=64):
+    def __init__(self, layers, output_dim, heads, input_resolution=224, width=64, attn_qkv_strategy='vv'):
         super().__init__()
         self.output_dim = output_dim
         self.input_resolution = input_resolution
@@ -182,7 +192,7 @@ class ModifiedResNet(nn.Module):
         self.layer4 = self._make_layer(width * 8, layers[3], stride=2)
 
         embed_dim = width * 32  # the ResNet feature dimension
-        self.attnpool = AttentionPool2d(input_resolution // 32, embed_dim, heads, output_dim)
+        self.attnpool = AttentionPool2d(input_resolution // 32, embed_dim, heads, output_dim, attn_qkv_strategy=attn_qkv_strategy)
 
     def _make_layer(self, planes, blocks, stride=1):
         layers = [Bottleneck(self._inplanes, planes, stride)]
@@ -292,7 +302,7 @@ class Transformer(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, output_dim: int):
+    def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, output_dim: int, attn_qkv_strategy:str='vv'):
         super().__init__()
         self.input_resolution = input_resolution
         self.output_dim = output_dim
@@ -311,6 +321,8 @@ class VisionTransformer(nn.Module):
         self.ln_post = LayerNorm(width)
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
 
+        self.attn_qkv_strategy = attn_qkv_strategy
+
     @torch.no_grad()
     def forward(self, x: torch.Tensor):
 
@@ -319,7 +331,7 @@ class VisionTransformer(nn.Module):
             
             # apply architecture surgery on the last 6 blocks
             for i in range(1, 7): # surgery 7, maskclip 2
-                self.attn = Attention(self.embed_dim, self.embed_dim, self.num_heads, True)
+                self.attn = Attention(self.embed_dim, self.embed_dim, self.num_heads, True, attn_qkv_strategy=self.attn_qkv_strategy)
                 self.attn.qkv.weight.data = self.transformer.resblocks[-i].attn.in_proj_weight.clone()
                 self.attn.qkv.bias.data = self.transformer.resblocks[-i].attn.in_proj_bias.clone()
                 self.attn.proj.weight.data = self.transformer.resblocks[-i].attn.out_proj.weight.clone()
@@ -368,7 +380,8 @@ class CLIPSurgery(nn.Module):
                  vocab_size: int,
                  transformer_width: int,
                  transformer_heads: int,
-                 transformer_layers: int
+                 transformer_layers: int,
+                 params: dict,
                  ):
         super().__init__()
 
@@ -391,7 +404,8 @@ class CLIPSurgery(nn.Module):
                 width=vision_width,
                 layers=vision_layers,
                 heads=vision_heads,
-                output_dim=embed_dim
+                output_dim=embed_dim,
+                attn_qkv_strategy=params['attn_qkv_strategy'],
             )
 
         self.transformer = Transformer(

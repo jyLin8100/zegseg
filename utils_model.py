@@ -27,17 +27,17 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device):
 
         # Inference SAM with points from CLIP Surgery
         sam_predictor.set_image(np.array(pil_img))
-        masks_logit, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True)
-        mask_logit = masks_logit[np.argmax(scores)]
-        mask = mask_logit > sam_predictor.model.mask_threshold
-        mask_logit = F.sigmoid(torch.from_numpy(mask_logit)).numpy() * 255
+        mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True)
+        mask_logit_origin = mask_logit_origin[np.argmax(scores)]
+        mask = mask_logit_origin > sam_predictor.model.mask_threshold
+        mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() * 255
         mask = mask.astype('uint8')
         mask_logit = mask_logit.astype('uint8')
     vis_dict = {'vis_map_img': vis_map_img,
                 'vis_input_img': vis_input_img, 
                 'vis_radius': vis_radius}
         
-    return mask, mask_logit, points, labels, num, vis_dict
+    return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
 
 def get_heatmap(pil_img, text, model, args, device='cuda'):
     

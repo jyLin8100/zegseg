@@ -27,7 +27,7 @@ def convert_weights(model: nn.Module):
     model.apply(_convert_weights_to_fp16)
 
 
-def build_model(name: str, state_dict: dict):
+def build_model(name: str, state_dict: dict, params:dict):
     vit = "visual.proj" in state_dict
 
     if vit:
@@ -56,7 +56,7 @@ def build_model(name: str, state_dict: dict):
         model = CLIPSurgery(
             embed_dim,
             image_resolution, vision_layers, vision_width, vision_patch_size,
-            context_length, vocab_size, transformer_width, transformer_heads, transformer_layers
+            context_length, vocab_size, transformer_width, transformer_heads, transformer_layers, params
         )
     else:
         model = CLIP(
