@@ -1,0 +1,23 @@
+test_dataset:
+  dataset:
+    name: paired-image-folders
+    args:
+      root_path_1: ./data/COD/TestDataset/COD10K/Imgs
+      root_path_2: ./data/COD/TestDataset/COD10K/GT
+      cache: none
+      split_key: test
+  wrapper:
+    name: val
+    args:
+      inp_size: 1024
+  batch_size: 1
+
+mask_params:
+  down_sample                 : [0.5, 0.5 ]    # default: [2, ]
+  attn_thr                    : [0.9, 0.9 ]      # default: [0.95, ]
+  pt_topk                     : [-1, -1 ]   # default: [-1, ]
+  recursive                   : [0, 1 ]  #default: [0, ]
+  recursive_coef              : [0.3, 0.3 ]      # default: [0.3, ]
+  rdd_str                     : ["", "" ]  # default: ['', ]
+  clip_use_neg_text           : [FALSE, FALSE ]         # default: [False, ]
+  clip_neg_text_attn_thr      : [-1, -1 ]  # default: [-1, ]
