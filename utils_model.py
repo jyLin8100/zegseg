@@ -8,28 +8,54 @@ import torch.nn.functional as F
 import datetime
 BICUBIC = InterpolationMode.BICUBIC
 
+eps = 1e-7
+
 def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config):
     mask_l = []
-    mask_logit_l = []
     mask_logit_origin_l = []
 
     num_mask = len(config['mask_params']['down_sample'])
     for idx in range(num_mask):
         reset_params(args, config, idx)
-        mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict = \
+        mask, _, mask_logit_origin, points, labels, num, vis_dict = \
                 get_mask(pil_img, text, sam_predictor, clip_model, args, device)
         mask_l.append(mask.astype('float'))
-        mask_logit_l.append(mask_logit.astype('float'))
         mask_logit_origin_l.append(mask_logit_origin)
 
-    # mask = sum(mask_l)/num_mask
-    mask_logit = sum(mask_logit_l)/num_mask
-    mask_logit_origin = sum(mask_logit_origin_l)/num_mask
-    mask = mask_logit_origin > sam_predictor.model.mask_threshold
-    mask_logit = mask_logit.astype('uint8')
-    mask = mask.astype('uint8')
+    if args.multi_mask_fusion_strategy=='entropy':
+        mask_logit_l = [F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() for mask_logit_origin in mask_logit_origin_l]
+        mask_entropy_l = [-mask_logit*np.log(mask_logit) for mask_logit in mask_logit_l]
+        mask_entropy_l = [ 1-mask_entropy for mask_entropy in mask_entropy_l ]
+        mask_sum = sum(mask_entropy_l)+eps
+        mask_w = [ mask_entropy/mask_sum for mask_entropy in mask_entropy_l]
+        for i in range(num_mask):
+            mask_logit_origin_l[i] *= mask_w[i]
+        mask_logit_origin = sum(mask_logit_origin_l)
+        mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy()
+        mask = mask_logit_origin > sam_predictor.model.mask_threshold
+    elif args.multi_mask_fusion_strategy=='entropy2':
+        mask_logit_l = [F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() for mask_logit_origin in mask_logit_origin_l]
+        mask_entropy_l = [ -mask_logit*np.log(mask_logit) for mask_logit in mask_logit_l ]
+        mask_entropy_l = [ 1-mask_entropy for mask_entropy in mask_entropy_l ]
+        mask_sum = sum(mask_entropy_l)+eps
+        mask_w = [ mask_entropy/mask_sum for mask_entropy in mask_entropy_l]
+        mask_l_w = []
+        for i in range(num_mask):
+            mask_l_w.append(mask_w[i]*mask_l[i])
+        mask_logit = sum(mask_l_w)
+        mask = mask_logit > 0.5
+    else:   # avg
+        # mask_logit = sum(mask_logit_l)/num_mask
+        mask_logit_origin = sum(mask_logit_origin_l)/num_mask  # 
+        mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy()
+        mask = mask_logit_origin > sam_predictor.model.mask_threshold
 
-    return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
+    mask = mask.astype('uint8')
+    # print(mask[0,0])
+    mask_logit *= 255
+    mask_logit = mask_logit.astype('uint8')
+
+    return mask, mask_logit, points, labels, num, vis_dict
 
 def get_mask(pil_img, text, sam_predictor, clip_model, args, device):
 
@@ -211,6 +237,9 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
         parent_dir += f'cfg_{args.config[:-5]}'
         if args.clip_attn_qkv_strategy!='vv':
             parent_dir += f'_qkv{args.clip_attn_qkv_strategy}'
+        if args.multi_mask_fusion_strategy!='avg':
+            parent_dir += f'_fuse{args.multi_mask_fusion_strategy}'
+
         num_mask = len(config['mask_params']['down_sample'])
         printd(f'fusing: {parent_dir.split("/")[-1]}')
         for idx in range(num_mask):

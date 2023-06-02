@@ -2,7 +2,7 @@
 #$ -cwd
 #$ -j y
 #$ -pe smp 8
-#$ -l h_rt=1:0:0    # 24 hours runtime
+#$ -l h_rt=3:0:0    # 24 hours runtime
 #$ -l h_vmem=11G      # 11G RAM per core
 #$ -l gpu=1     # request 1 GPU
 ##$ -l cluster=andrena # use the Andrena nodes
@@ -76,11 +76,16 @@ cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
 # python demo_dataset.py --multi_mask_fusion=True --config config/s1_0.5_0.25_thr0.9.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s1_0.5_0.25_thr0.9.log
 # echo cfg_COD_GT_woPos_s2_1_0.5_0.25_thr0.9.log; python demo_dataset.py --multi_mask_fusion=True --config config/s2_1_0.5_0.25_thr0.9.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s2_1_0.5_0.25_thr0.9.log
 # python demo_dataset.py --multi_mask_fusion=True --config config/s1_0.5_0.25_thr0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s1_0.5_0.25_thr0.95.log
+# kk
+python demo_dataset.py --multi_mask_fusion=True --config config/s1_0.5_0.25_thr0.9.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s1_0.5_0.25_thr0.9.log
+# echo cfg_COD_GT_woPos_s2_1_0.5_0.25_thr0.9_kk.log; python demo_dataset.py --multi_mask_fusion=True --config config/s2_1_0.5_0.25_thr0.9.yaml --cache_blip_filename COD_GT_woPos  --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s2_1_0.5_0.25_thr0.9_kk.log
 
 ## fuse threshold
 # python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.9_0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_0.95.log
 # python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95.log
-# python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95_kk.log
+# kk
+# echo cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95_kk.log; python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95_kk.log
+# echo cfg_COD_GT_woPos_s0.5_thr0.8_0.85_0.9_0.95_kk.log; python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.8_0.85_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.85_0.9_0.95_kk.log
 
 ## fuse recursive
 # python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.9_rcur0.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0.log
@@ -91,7 +96,11 @@ cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
 # python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.9_rcur0.yaml  --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk'>> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_kk.log
 # python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.9_rcur0_1.yaml  --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk'>> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_kk.log
 # python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.9_rcur0_1_2.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_kk.log
-# python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.9_rcur0_1_2_3.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3_kk.log
+# echo cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3_kk; python demo_dataset.py --multi_mask_fusion=True --config config/s0.5_thr0.9_rcur0_1_2_3.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3_kk.log
+
+## fusing method: multi_mask_fusion_strategy (avg: refined mask_logits; entropy, entropy2)
+# echo cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3_kk_entrp; python demo_dataset.py --multi_mask_fusion=True --multi_mask_fusion_strategy='entropy' --config config/s0.5_thr0.9_rcur0_1_2_3.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3_kk_entrp.log
+# echo cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3_kk_entrp2; python demo_dataset.py --multi_mask_fusion=True --multi_mask_fusion_strategy='entropy2' --config config/s0.5_thr0.9_rcur0_1_2_3.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3_kk_entrp2.log
 
 
 
@@ -107,7 +116,7 @@ cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
 ## fuse threshold
 # python demo_dataset_fuse.py --config config/s0.5_thr0.9_0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_0.95.log
 # python demo_dataset_fuse.py --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95.log
-python demo_dataset_fuse.py --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95_kk.log
+# python demo_dataset_fuse.py --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95_kk.log
 
 ## fuse recursive
 # python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0.log
@@ -125,4 +134,4 @@ python demo_dataset_fuse.py --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_bl
 ## test
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.8 --down_sample=1 --recursive=2
 # echo COD_GT_woPos_thr8e-1_s1_neg0.95; python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.8 --down_sample=1 --clip_attn_qkv_strategy='kk' >> out.log 
-python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.8 --down_sample=0.5
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.8 --down_sample=0.5

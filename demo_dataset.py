@@ -23,6 +23,7 @@ def mkdir(path):
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', default='configs/mydemo.yaml')
 parser.add_argument('--multi_mask_fusion', type=bool, default=False, help='fuse multiple masks') 
+parser.add_argument('--multi_mask_fusion_strategy', type=str, default='avg', help='fuse multiple masks')  # avg, entropy, entropy2
 parser.add_argument('--cache_blip_filename', default='COD_GT_woPos') # COD, COD_woPos, COD_GT, COD_GT_woPos, COD_BLIP_GT_woPos
 parser.add_argument('--clip_model', type=str, default='CS-ViT-B/16', help='model for clip surgery') 
 parser.add_argument('--sam_checkpoint', type=str, default='sam_vit_h_4b8939.pth', help='') 
@@ -117,9 +118,9 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
     
 
     if args.multi_mask_fusion:
-        mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict = get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config)
+        mask, mask_logit, points, labels, num, vis_dict = get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config)
     else:
-        mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device)
+        mask, mask_logit, _, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device)
         vis_map_img = vis_dict['vis_map_img']
         vis_input_img = vis_dict['vis_input_img']
         vis_radius = vis_dict['vis_radius']
