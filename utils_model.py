@@ -24,7 +24,7 @@ def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, confi
 
     if args.multi_mask_fusion_strategy=='entropy':
         mask_logit_l = [F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() for mask_logit_origin in mask_logit_origin_l]
-        mask_entropy_l = [-mask_logit*np.log(mask_logit) for mask_logit in mask_logit_l]
+        mask_entropy_l = [-mask_logit*np.log2(mask_logit) for mask_logit in mask_logit_l]
         mask_entropy_l = [ 1-mask_entropy for mask_entropy in mask_entropy_l ]
         mask_sum = sum(mask_entropy_l)+eps
         mask_w = [ mask_entropy/mask_sum for mask_entropy in mask_entropy_l]
@@ -35,7 +35,7 @@ def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, confi
         mask = mask_logit_origin > sam_predictor.model.mask_threshold
     elif args.multi_mask_fusion_strategy=='entropy2':
         mask_logit_l = [F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() for mask_logit_origin in mask_logit_origin_l]
-        mask_entropy_l = [ -mask_logit*np.log(mask_logit) for mask_logit in mask_logit_l ]
+        mask_entropy_l = [ -mask_logit*np.log2(mask_logit) for mask_logit in mask_logit_l ]
         mask_entropy_l = [ 1-mask_entropy for mask_entropy in mask_entropy_l ]
         mask_sum = sum(mask_entropy_l)+eps
         mask_w = [ mask_entropy/mask_sum for mask_entropy in mask_entropy_l]
