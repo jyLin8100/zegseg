@@ -62,8 +62,6 @@ def get_text_from_img(img_path, pil_img, BLIP_dict=None, model=None, vis_process
 ## configs
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', default='configs/mydemo.yaml')
-# parser.add_argument('--model')
-# parser.add_argument('--prompt', default='none')
 args = parser.parse_args()
 with open(args.config, 'r') as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
@@ -92,17 +90,6 @@ print("dataset size:", len(paths_img))
 #     print(cv2_img.shape, tensor_img.shape, tensor_gt.shape)
 
 ## load model
-# clip
-# import clip
-# model, preprocess = clip.load("CS-ViT-B/16", device=device)
-# model.eval()
-# # Init SAM
-# from segment_anything import sam_model_registry, SamPredictor
-# sam_checkpoint = "sam_vit_h_4b8939.pth"
-# model_type = "vit_h"
-# sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-# sam.to(device=device)
-# predictor = SamPredictor(sam)
 # blip (if necessary)
 from lavis.models import load_model_and_preprocess
 # model_type="pretrain_opt2.7b"
@@ -125,9 +112,8 @@ open_type = 'a' if os.path.exists(output_path) else 'w'
 log_file = open(output_path, open_type)
 
 for img_path, pairs in zip(paths_img, loader):
-# for img_path in ["demo_data/8.jpg", "demo_data/9.jpg"]:
-    tensor_img = pairs['inp']
-    tensor_gt = pairs['gt']
+# for img_path in [
+#     'data/COD/TestDataset/COD10K/Imgs/COD10K-CAM-1-Aquatic-1-BatFish-4.jpg',]:
     pil_img = Image.open(img_path).convert("RGB")
     cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
     preprocess =  Compose([Resize((224, 224), interpolation=BICUBIC), ToTensor(),

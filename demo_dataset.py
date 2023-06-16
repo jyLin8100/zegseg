@@ -159,20 +159,25 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
                 else:
                     clr = (0, 255, 102)
                 cv2.circle(vis_pt, (x, y), vis_radius[i], clr, vis_radius[i])
-                if args.recursive>0:
-                    # cv2.circle(vis_map_img[-1], (x, y), vis_radius[i], clr, vis_radius[i])
-                    cv2.circle(vis_input_img[-1], (x, y), vis_radius[i], clr, vis_radius[i])
+                cv2.circle(vis_input_img[-1], (x, y), vis_radius[i], clr, vis_radius[i])
         
-            if args.recursive>0:
-                for i in range(len(vis_map_img)):    
-                    plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_map_img[i])
-                for i in range(len(vis_input_img)):    
-                    plt.imsave(save_path_dir + img_name + f'_iptImg{i}.jpg', vis_input_img[i])
+            for i in range(len(vis_map_img)):
+                plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_map_img[i])
+            for i in range(len(vis_input_img)):
+                plt.imsave(save_path_dir + img_name + f'_iptImg{i}.jpg', vis_input_img[i])
     
         save_path_sam_pt = save_path_dir + img_name + f"_sam_pt.jpg"
         save_path_sam_pt_logit = save_path_dir + img_name + f"_sam_pt_logit.jpg"
         plt.imsave(save_path_sam_pt, vis_pt)
         plt.imsave(save_path_sam_pt_logit, mask_logit, cmap='gray')
+
+        # save_path_sam_pt_logit_img = save_path_dir + img_name + f"_sam_pt_logit_img.jpg"
+        # logit_img = mask_logit/255*vis_input_img[0]
+        # plt.imsave(save_path_sam_pt_logit_img, logit_img.astype('uint8'))
+        # save_path_sam_pt_img = save_path_dir + img_name + f"_sam_pt_img.jpg"
+        # mask_img = vis_pt/255*vis_input_img[0]
+        # plt.imsave(save_path_sam_pt_img, mask_img.astype('uint8'))
+        
         # save_path_sam = save_path_dir + img_name + f"_sam.jpg"
         # save_path_gt = save_path_dir + img_name + f"_gt.jpg"
         # plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')
