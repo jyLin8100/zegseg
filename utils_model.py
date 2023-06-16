@@ -11,6 +11,8 @@ BICUBIC = InterpolationMode.BICUBIC
 eps = 1e-7
 
 def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config):
+
+    # get list of masks
     mask_l = []
     mask_logit_origin_l = []
 
@@ -22,6 +24,7 @@ def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, confi
         mask_l.append(mask.astype('float'))
         mask_logit_origin_l.append(mask_logit_origin)
 
+    # fusion
     if args.multi_mask_fusion_strategy=='entropy':
         mask_logit_l = [F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() for mask_logit_origin in mask_logit_origin_l]
         mask_entropy_l = [-mask_logit*np.log2(mask_logit) for mask_logit in mask_logit_l]
@@ -62,13 +65,13 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device):
     cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
     with torch.no_grad():
         # get heatmap
-        sm_mean, sm, vis_map_img, vis_input_img = get_heatmap(pil_img, text, clip_model, args, device)
+        sm_mean, sm, vis_map_img, vis_input_img, original_sm_norm = get_heatmap(pil_img, text, clip_model, args, device)
 
         # get positive points from individual maps (each sentence in the list), and negative points from the mean map
         points, labels, vis_radius, num = heatmap2points(sm, sm_mean, cv2_img, args)
 
         if args.clip_use_neg_text:
-            sm_mean_n, sm_n, vis_map_img_n, vis_input_img_n = get_heatmap(pil_img, ['background'], clip_model, args, device)
+            sm_mean_n, sm_n, vis_map_img_n, vis_input_img_n, original_sm_norm_n = get_heatmap(pil_img, ['background'], clip_model, args, device)
             points_n, labels_n, vis_radius_n, num_n = heatmap2points(sm_n, sm_mean_n, cv2_img, args, attn_thr=args.clip_neg_text_attn_thr )
             points = points + points_n[-num_n:]
             labels = np.concatenate([labels, 1+labels_n[-num_n:]], 0)
@@ -84,7 +87,8 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device):
         mask_logit = mask_logit.astype('uint8')
     vis_dict = {'vis_map_img': vis_map_img,
                 'vis_input_img': vis_input_img, 
-                'vis_radius': vis_radius}
+                'vis_radius': vis_radius,
+                'original_sm_norm': original_sm_norm}
         
     return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
 
@@ -124,6 +128,7 @@ def get_heatmap(pil_img, text, model, args, device='cuda'):
     cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
     vis_input_img.append(cur_image.astype('uint8'))
     vis_map_img.append((255*sm1[...,0]).astype('uint8'))
+    original_sm_norm=sm1[...,0]
 
     # if args.recursive>0:
         
@@ -143,12 +148,14 @@ def get_heatmap(pil_img, text, model, args, device='cuda'):
         sm1 = torch.nn.functional.interpolate(sm1, (cur_image.shape[0], cur_image.shape[1]), mode='bilinear')[0, 0, :, :].unsqueeze(-1)
         sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
         sm1 = sm1.cpu().numpy()
+        # if i+1 < args.recursive:
+        #     sm1 = np.clip(sm1+(1-args.attn_thr), 0, 1) # lin
         cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
         vis_input_img.append(cur_image.astype('uint8'))
         vis_map_img.append((255*sm1[...,0]).astype('uint8'))
 
 
-    return sm_mean, sm, vis_map_img, vis_input_img
+    return sm_mean, sm, vis_map_img, vis_input_img, original_sm_norm
 
 def get_text_from_img(img_path, pil_img, BLIP_dict=None, model=None, vis_processors=None, device='cuda'):
     if BLIP_dict.get(img_path) is not None:
@@ -203,6 +210,10 @@ def heatmap2points(sm, sm_mean, cv2_img, args, attn_thr=-1):
     points = p[num:] # negatives in the second half
     labels = [l[num:]]
     vis_radius = [np.linspace(4,1,num)]
+    # points = [] # to see the results of only using positive point prompts
+    # labels = [[]]
+    # vis_radius = [np.linspace(4,1,0)]
+
     for i in range(sm.shape[-1]):  
         p, l, map = clip.similarity_map_to_points(sm[:, i], cv2_img.shape[:2], cv2_img, t=attn_thr, 
                                                     down_sample=args.down_sample,
