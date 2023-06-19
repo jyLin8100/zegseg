@@ -39,6 +39,7 @@ parser.add_argument('--clip_use_neg_text', type=bool, default=False, help='negat
 parser.add_argument('--clip_neg_text_attn_thr', type=float, default=0.8, help='negative threshold for clip surgery') 
 parser.add_argument('--clip_attn_qkv_strategy', type=str, default='vv', help='qkv attention strategy for clip surgery')  # vv(original), kk
 
+parser.add_argument('--test', action='store_true')  # store output in output_img_test
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -59,6 +60,7 @@ if os.path.exists(cache_blip_filename):
     printd(f"loading BLIP text output from file: {cache_blip_filename}, length:{len(blip_text_l)}")
 
 parent_dir = f'output_img/{cache_blip_filename}/'
+if args.test:   parent_dir = f'output_img_test/{cache_blip_filename}/'
 save_path_dir = get_dir_from_args(args, config, parent_dir)
 
 

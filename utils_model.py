@@ -129,10 +129,11 @@ def get_heatmap(pil_img, text, model, args, device='cuda'):
     vis_input_img.append(cur_image.astype('uint8'))
     vis_map_img.append((255*sm1[...,0]).astype('uint8'))
     original_sm_norm=sm1[...,0]
+    if args.recursive==0:
+        return sm_mean, sm, vis_map_img, vis_input_img, original_sm_norm
 
-    # if args.recursive>0:
-        
-
+    sm_l = [sm]
+    sm_mean_l = [sm_mean]
     for i in range(args.recursive):
         cur_input_image = Image.fromarray(cur_image.astype(np.uint8))
         cur_input_image = preprocess(cur_input_image).unsqueeze(0).to(device)
@@ -153,9 +154,10 @@ def get_heatmap(pil_img, text, model, args, device='cuda'):
         cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
         vis_input_img.append(cur_image.astype('uint8'))
         vis_map_img.append((255*sm1[...,0]).astype('uint8'))
+        sm_l.append(sm)
+        sm_mean_l.append(sm_mean)
 
-
-    return sm_mean, sm, vis_map_img, vis_input_img, original_sm_norm
+    return sm_mean_l[-1], sm_l[-1], vis_map_img, vis_input_img, original_sm_norm
 
 def get_text_from_img(img_path, pil_img, BLIP_dict=None, model=None, vis_processors=None, device='cuda'):
     if BLIP_dict.get(img_path) is not None:

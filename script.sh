@@ -108,10 +108,12 @@ cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.8 --down_sample=0.5
 
 
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --pt_topk 1 --clip_attn_qkv_strategy='kk' --test
+python demo_dataset_analysis.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --pt_topk 1  --clip_attn_qkv_strategy='kk' --test 
 
 
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=3 >> output_log/COD_GT_woPos_thr9e-1_s05_rcur3_kk_add0.1.log 
-python demo_dataset_analysis.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=3 >> output_log_analysis/COD_GT_woPos_thr9e-1_s05_rcur3_kk_add0.1.log 
+# python demo_dataset_analysis.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=3 >> output_log_analysis/COD_GT_woPos_thr9e-1_s05_rcur3_kk_add0.1.log 
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=3 >> output_log/COD_GT_woPos_thr9e-1_s05_rcur3_kk.log 
 # python demo_dataset_analysis.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=3 >> output_log_analysis/COD_GT_woPos_thr9e-1_s05_rcur3_kk_add0.2.log  
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=3 >> output_log_analysis/COD_GT_woPos_thr9e-1_s05_rcur3_kk_woNeg.log 
@@ -188,24 +190,24 @@ python demo_dataset_analysis.py --cache_blip_filename COD_GT_woPos --attn_thr 0.
 
 
 # ----------- multiple mask -------------
-# bak: script for  demo_dataset_fuse.py
-## fuse scale
-# python demo_dataset_fuse.py --config config/s1_0.5_0.25_thr0.9.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s1_0.5_0.25_thr0.9.log
-# python demo_dataset_fuse.py --config config/s1_0.5_0.25_thr0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s1_0.5_0.25_thr0.95.log
+    # bak: script for  demo_dataset_fuse.py
+    ## fuse scale
+    # python demo_dataset_fuse.py --config config/s1_0.5_0.25_thr0.9.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s1_0.5_0.25_thr0.9.log
+    # python demo_dataset_fuse.py --config config/s1_0.5_0.25_thr0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s1_0.5_0.25_thr0.95.log
 
-## fuse threshold
-# python demo_dataset_fuse.py --config config/s0.5_thr0.9_0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_0.95.log
-# python demo_dataset_fuse.py --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95.log
-# python demo_dataset_fuse.py --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95_kk.log
+    ## fuse threshold
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.9_0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_0.95.log
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95.log
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.8_0.9_0.95.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.8_0.9_0.95_kk.log
 
-## fuse recursive
-# python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0.log
-# python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1.log
-# python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1_2.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2.log
-# python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1_2_3.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3.log
-# kk
-# python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0.yaml  --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk'>> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_kk.log
-# python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1.yaml  --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk'>> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_kk.log
-# python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1_2.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_kk.log
-# python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1_2_3.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3_kk.log
+    ## fuse recursive
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0.log
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1.log
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1_2.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2.log
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1_2_3.yaml --cache_blip_filename COD_GT_woPos >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3.log
+    # kk
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0.yaml  --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk'>> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_kk.log
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1.yaml  --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk'>> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_kk.log
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1_2.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_kk.log
+    # python demo_dataset_fuse.py --config config/s0.5_thr0.9_rcur0_1_2_3.yaml --cache_blip_filename COD_GT_woPos --clip_attn_qkv_strategy='kk' >> output_log/cfg_COD_GT_woPos_s0.5_thr0.9_rcur0_1_2_3_kk.log
 
