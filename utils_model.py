@@ -8,6 +8,14 @@ import torch.nn.functional as F
 import datetime
 BICUBIC = InterpolationMode.BICUBIC
 
+from scipy.ndimage import gaussian_filter
+import scipy
+
+
+use_origin_img=False
+use_dilation=False
+dilation_k=20
+print(f'use_origin_img:{use_origin_img}, use_dilation:{use_dilation}, dilation_k:{dilation_k},')
 eps = 1e-7
 
 def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config):
@@ -116,6 +124,7 @@ def get_heatmap(pil_img, text, model, args, device='cuda'):
 
     vis_input_img = []
     cur_image = np.array(pil_img)
+    origin_image = cur_image
     # vis_input_img.append(cur_image)
     vis_map_img = []
 
@@ -125,7 +134,20 @@ def get_heatmap(pil_img, text, model, args, device='cuda'):
     sm1 = torch.nn.functional.interpolate(sm1, (cur_image.shape[0], cur_image.shape[1]), mode='bilinear')[0, 0, :, :].unsqueeze(-1)
     sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
     sm1 = sm1.cpu().numpy()
-    cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+
+
+
+    if use_dilation:
+        sm1d = sm1.reshape(cur_image.shape[0], cur_image.shape[1])
+        sm1d = scipy.ndimage.grey_dilation(sm1d, size=(dilation_k,dilation_k))
+        sm1 = np.clip(sm1d.reshape(cur_image.shape[0], cur_image.shape[1], 1),0,1)
+    
+    if use_origin_img:
+        cur_image = origin_image
+    cur_image_bg = np.clip(gaussian_filter(cur_image, sigma=args.recursive_blur_gauSigma),0,255) * (1-sm1)
+    cur_image_fg = cur_image * sm1
+    cur_image = (cur_image_fg + cur_image_bg) * args.recursive_coef + cur_image * (1-args.recursive_coef)
+
     vis_input_img.append(cur_image.astype('uint8'))
     vis_map_img.append((255*sm1[...,0]).astype('uint8'))
     original_sm_norm=sm1[...,0]
@@ -151,7 +173,23 @@ def get_heatmap(pil_img, text, model, args, device='cuda'):
         sm1 = sm1.cpu().numpy()
         # if i+1 < args.recursive:
         #     sm1 = np.clip(sm1+(1-args.attn_thr), 0, 1) # lin
-        cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+        
+        if use_dilation:
+            sm1d = sm1.reshape(cur_image.shape[0], cur_image.shape[1])
+            sm1d = scipy.ndimage.grey_dilation(sm1d, size=(dilation_k,dilation_k))
+            sm1 = np.clip(sm1d.reshape(cur_image.shape[0], cur_image.shape[1], 1),0,1)
+
+        if use_origin_img:
+            cur_image = origin_image
+
+        cur_image_bg = np.clip(gaussian_filter(cur_image, sigma=args.recursive_blur_gauSigma),0,255) * (1-sm1)
+        cur_image_fg = cur_image * sm1
+        cur_image = (cur_image_fg + cur_image_bg) * args.recursive_coef + cur_image * (1-args.recursive_coef)
+
+        
+       
+        
+        # cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
         vis_input_img.append(cur_image.astype('uint8'))
         vis_map_img.append((255*sm1[...,0]).astype('uint8'))
         sm_l.append(sm)
@@ -252,7 +290,8 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             parent_dir += f'_qkv{args.clip_attn_qkv_strategy}'
         if args.multi_mask_fusion_strategy!='avg':
             parent_dir += f'_fuse{args.multi_mask_fusion_strategy}'
-
+        exp_name += f'_sigma{args.recursive_blur_gauSigma}'
+        
         num_mask = len(config['mask_params']['down_sample'])
         printd(f'fusing: {parent_dir.split("/")[-1]}')
         for idx in range(num_mask):
@@ -284,6 +323,7 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             exp_name += f'_rdd{args.rdd_str}'
         if args.clip_attn_qkv_strategy!='vv':
             exp_name += f'_qkv{args.clip_attn_qkv_strategy}'
+        exp_name += f'_sigma{args.recursive_blur_gauSigma}'
         save_path_dir = f'{parent_dir+exp_name}/'
         printd(f'{exp_name} ({args}')
 
