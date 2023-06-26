@@ -197,6 +197,8 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         save_path_sam_pt_logit = save_path_dir + img_name + f"_sam_pt_logit.jpg"
         plt.imsave(save_path_sam_pt, vis_pt_l[-1])
         plt.imsave(save_path_sam_pt_logit, mask_logit, cmap='gray')
+    # else:
+    #     break
 
         # save_path_sam_pt_logit_img = save_path_dir + img_name + f"_sam_pt_logit_img.jpg"
         # logit_img = mask_logit/255*vis_input_img[0]
@@ -209,6 +211,7 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         # save_path_gt = save_path_dir + img_name + f"_gt.jpg"
         # plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')
         # plt.imsave(save_path_gt, tensor_gt.view(1024,1024).numpy(), cmap='gray')
+# print(save_path_dir.split('/')[-2])
 for i in range(args.recursive+1):
     print(val_metric1[i].item(),                
           val_metric2[i].item(),
