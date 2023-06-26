@@ -37,6 +37,11 @@ parser.add_argument('--recursive_coef', type=float, default=0.3, help='recursive
 parser.add_argument('--recursive_blur_gauSigma', type=float, default=1, help='sigma for guassian blur') 
 parser.add_argument('--recursive_input_strategy', type=float, default=1, help='strategy for refining the img input of clip surgery: accum, last') 
 
+parser.add_argument('--use_origin_img', action='store_true') 
+parser.add_argument('--use_dilation', action='store_true') 
+parser.add_argument('--dilation_k', type=int, default=40, help='') 
+parser.add_argument('--use_blur', action='store_true') 
+parser.add_argument('--use_fuse_mask_hm', action='store_true') 
 parser.add_argument('--rdd_str', type=str, default='', help='text for redundant features as input of clip surgery') 
 parser.add_argument('--clip_use_neg_text', type=bool, default=False, help='negative text input for clip surgery') 
 parser.add_argument('--clip_neg_text_attn_thr', type=float, default=0.8, help='negative threshold for clip surgery') 

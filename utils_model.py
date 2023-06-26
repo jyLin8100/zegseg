@@ -9,6 +9,8 @@ import torch.nn.functional as F
 import datetime
 BICUBIC = InterpolationMode.BICUBIC
 
+from scipy.ndimage import gaussian_filter
+import scipy
 eps = 1e-7
 
 def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config):
@@ -113,7 +115,26 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
             mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() 
 
             # update input image for next iter
-            cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+            sm1 = sm_logit
+            if args.use_fuse_mask_hm:
+                mask_logit1 = mask_logit
+                mask_logit1[mask_logit1<0.5] = 0
+                mask_logit1 = np.expand_dims(mask_logit1, axis=2)
+                sm1 = np.clip(  mask_logit1 + sm1, 0, 1)
+
+            if args.use_dilation:
+                sm1d = sm1.reshape(cur_image.shape[0], cur_image.shape[1])
+                sm1d = scipy.ndimage.grey_dilation(sm1d, size=(args.dilation_k, args.dilation_k))
+                sm1 = np.clip(sm1d.reshape(cur_image.shape[0], cur_image.shape[1], 1), 0, 1)
+            
+            if args.use_origin_img:
+                cur_image = ori_image
+            if args.use_blur:
+                cur_image_bg = np.clip(gaussian_filter(cur_image, sigma=args.recursive_blur_gauSigma),0,255) * (1-sm1)
+                cur_image_fg = cur_image * sm1
+                cur_image = (cur_image_fg + cur_image_bg) * args.recursive_coef + cur_image * (1-args.recursive_coef)
+            else:
+                cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
             
             # collect for visualization
             vis_input_img.append(cur_image.astype('uint8'))
@@ -278,6 +299,7 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             parent_dir += f'_qkv{args.clip_attn_qkv_strategy}'
         if args.multi_mask_fusion_strategy!='avg':
             parent_dir += f'_fuse{args.multi_mask_fusion_strategy}'
+        exp_name += f'_sigma{args.recursive_blur_gauSigma}'
 
         num_mask = len(config['mask_params']['down_sample'])
         printd(f'fusing: {parent_dir.split("/")[-1]}')
@@ -310,6 +332,16 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             exp_name += f'_rdd{args.rdd_str}'
         if args.clip_attn_qkv_strategy!='vv':
             exp_name += f'_qkv{args.clip_attn_qkv_strategy}'
+
+        if args.use_origin_img:
+            exp_name += f'_oriImg'
+        if args.use_dilation:
+            exp_name += f'_dilation{args.dilation_k}'
+        if args.use_blur:
+            exp_name += f'_blur'
+        if args.use_fuse_mask_hm:
+            exp_name += f'_fuseMask'
+        exp_name += f'_sigma{args.recursive_blur_gauSigma}'
         save_path_dir = f'{parent_dir+exp_name}/'
         printd(f'{exp_name} ({args}')
 
