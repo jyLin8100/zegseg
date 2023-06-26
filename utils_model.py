@@ -93,6 +93,7 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
     points_l = []
     labels_l = []
     num_l = []
+    vis_mask0_l = []  # mask before post refine. 
 
     ori_image = np.array(pil_img)
 
@@ -124,7 +125,193 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
                 vis_radius = np.concatenate([ori_neg_vis_radius, vis_radius], 0)
 
             # Inference SAM with points from CLIP Surgery
-            mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True)
+            # 1 use fused attn map(sm1) as mask input. -> hm 某些低亮度低也会被纳入mask。
+            if args.post_mode=='smSAMInput':
+                if i==0:
+                    mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                else:
+                    h, w = sm1.shape[0:2]
+                    _sm = torch.from_numpy(sm1.reshape(1, 1, h, w))
+                    _sm = torch.nn.functional.interpolate(_sm, (256, 256), mode='bilinear')[0, 0, :, :].unsqueeze(0)
+                    mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,
+                            mask_input=_sm)
+            # 2 use logit of first output as mask input. 还是不能解决不稳定性，受到第一次mask的影响
+            elif args.post_mode=='PostLogit':
+                mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                # Cascaded Post-refinement-1: use low-res mask
+                best_idx = np.argmax(scores)
+                mask_logit_origin, scores, logits,  = sam_predictor.predict(
+                            point_coords=np.array(points),
+                            point_labels=labels,
+                            mask_input=logits[best_idx: best_idx + 1, :, :], 
+                            multimask_output=True,
+                            return_logits=True)
+            # 3  use mask in last iter.
+            elif args.post_mode=='LogitSAMInput':
+                if i==0:
+                    mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                else:
+                    best_idx = np.argmax(scores)
+                    mask_logit_origin, scores, logits,  = sam_predictor.predict(
+                            point_coords=np.array(points),
+                            point_labels=labels,
+                            mask_input=logits[best_idx: best_idx + 1, :, :], 
+                            multimask_output=True,
+                            return_logits=True)
+            # 4. get box from first output as box input.
+            elif args.post_mode == 'PostBox':
+                mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                best_idx = np.argmax(scores)
+                mask = mask_logit_origin[best_idx] > sam_predictor.model.mask_threshold
+                y, x = np.nonzero(mask)
+                x_min = x.min()
+                x_max = x.max()
+                y_min = y.min()
+                y_max = y.max()
+                input_box = np.array([x_min, y_min, x_max, y_max])
+                mask_logit_origin, scores, logits,  = sam_predictor.predict(
+                    point_coords=np.array(points),
+                    point_labels=labels,
+                    box=input_box[None, :],
+                    # mask_input=logits[best_idx: best_idx + 1, :, :], 
+                    multimask_output=True,
+                    return_logits=True)
+            # 4. get box from first output as box input, but no points input which cuz discontinuous part
+            elif args.post_mode == 'PostBoxWoPt':
+                mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                best_idx = np.argmax(scores)
+                mask = mask_logit_origin[best_idx] > sam_predictor.model.mask_threshold
+                y, x = np.nonzero(mask)
+
+                if len(x)!=0:
+                    x_min = x.min() 
+                    x_max = x.max() 
+                    y_min = y.min()
+                    y_max = y.max()
+                else:
+                    x_min = 0
+                    x_max = mask_logit_origin[0].shape[1]
+                    y_min = 0
+                    y_max = mask_logit_origin[0].shape[0]
+                input_box = np.array([x_min, y_min, x_max, y_max])
+                mask_logit_origin, scores, logits,  = sam_predictor.predict(
+                    # point_coords=np.array(points),
+                    # point_labels=labels,
+                    box=input_box[None, :],
+                    # mask_input=logits[best_idx: best_idx + 1, :, :], 
+                    multimask_output=True,
+                    return_logits=True)
+            # 5. enlarge the box to 1.1x 
+            elif args.post_mode == 'PostBoxWoPt1.1':
+                mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                best_idx = np.argmax(scores)
+                mask = mask_logit_origin[best_idx] > sam_predictor.model.mask_threshold
+
+                vis_mask0_l.append(mask.astype('uint8'))
+                h, w = mask_logit_origin[0].shape
+                y, x = np.nonzero(mask)
+                if len(x)!=0:
+                    x_min = x.min() 
+                    x_max = x.max() 
+                    y_min = y.min()
+                    y_max = y.max()
+                else:
+                    x_min = 0
+                    x_max = mask_logit_origin[0].shape[1]
+                    y_min = 0
+                    y_max = mask_logit_origin[0].shape[0]
+                x_delta = (x_max - x_min) * 0.05
+                y_delta = (y_max - y_min) * 0.05
+                x_min = max(0, x_min-x_delta)
+                y_min = max(0, y_min-y_delta)
+                x_max = min(w, x_max+x_delta)
+                y_max = min(h, y_max+y_delta)
+
+                input_box = np.array([x_min, y_min, x_max, y_max])
+                mask_logit_origin, scores, logits,  = sam_predictor.predict(
+                    # point_coords=np.array(points),
+                    # point_labels=labels,
+                    box=input_box[None, :],
+                    # mask_input=logits[best_idx: best_idx + 1, :, :], 
+                    multimask_output=True,
+                    return_logits=True)
+            # 6. enlarge the box to 1.1x, also use mask to avoid seg the bg in the box
+            elif args.post_mode == 'PostBoxMaskWoPt1.1':
+                mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                best_idx = np.argmax(scores)
+                mask = mask_logit_origin[best_idx] > sam_predictor.model.mask_threshold
+
+                vis_mask0_l.append(mask.astype('uint8'))
+                h, w = mask_logit_origin[0].shape
+                y, x = np.nonzero(mask)
+                if len(x)!=0:
+                    x_min = x.min() 
+                    x_max = x.max() 
+                    y_min = y.min()
+                    y_max = y.max()
+                else:
+                    x_min = 0
+                    x_max = mask_logit_origin[0].shape[1]
+                    y_min = 0
+                    y_max = mask_logit_origin[0].shape[0]
+                x_delta = (x_max - x_min) * 0.05
+                y_delta = (y_max - y_min) * 0.05
+                x_min = max(0, x_min-x_delta)
+                y_min = max(0, y_min-y_delta)
+                x_max = min(w, x_max+x_delta)
+                y_max = min(h, y_max+y_delta)
+
+                input_box = np.array([x_min, y_min, x_max, y_max])
+                mask_logit_origin, scores, logits,  = sam_predictor.predict(
+                    # point_coords=np.array(points),
+                    # point_labels=labels,
+                    box=input_box[None, :],
+                    mask_input=logits[best_idx: best_idx + 1, :, :], 
+                    multimask_output=True,
+                    return_logits=True)
+            
+            # 6. enlarge the box to 1.1x, also use inflated mask to avoid seg the bg in the box (cuz some discontinuous part. but -> include too much bg area)
+            elif args.post_mode == 'PostBoxMaskWoPtInflate1.1':
+                mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                best_idx = np.argmax(scores)
+                mask = mask_logit_origin[best_idx] > sam_predictor.model.mask_threshold
+
+                vis_mask0_l.append(mask.astype('uint8'))
+                h, w = mask_logit_origin[0].shape
+                y, x = np.nonzero(mask)
+                if len(x)!=0:
+                    x_min = x.min() 
+                    x_max = x.max() 
+                    y_min = y.min()
+                    y_max = y.max()
+                else:
+                    x_min = 0
+                    x_max = mask_logit_origin[0].shape[1]
+                    y_min = 0
+                    y_max = mask_logit_origin[0].shape[0]
+                x_delta = (x_max - x_min) * 0.05
+                y_delta = (y_max - y_min) * 0.05
+                x_min = max(0, x_min-x_delta)
+                y_min = max(0, y_min-y_delta)
+                x_max = min(w, x_max+x_delta)
+                y_max = min(h, y_max+y_delta)
+
+                input_box = np.array([x_min, y_min, x_max, y_max])
+
+                logits[best_idx] = scipy.ndimage.grey_dilation(logits[best_idx],  size=(3,3))
+                mask_logit_origin, scores, logits,  = sam_predictor.predict(
+                    # point_coords=np.array(points),
+                    # point_labels=labels,
+                    box=input_box[None, :],
+                    mask_input=logits[best_idx: best_idx + 1, :, :], 
+                    multimask_output=True,
+                    return_logits=True)
+
+            
+            else:
+                mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+
+
             mask_logit_origin = mask_logit_origin[np.argmax(scores)]
             mask = mask_logit_origin > sam_predictor.model.mask_threshold
             mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() 
@@ -178,6 +365,7 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
                 'points_l': points_l,
                 'labels_l': labels_l,
                 'num_l': num_l,
+                'vis_mask0_l': vis_mask0_l}
         
     return vis_mask_l[-1], vis_mask_logit_l[-1], mask_logit_origin, points_l[-1], labels_l[-1], num_l[-1], vis_dict
     return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
@@ -360,6 +548,8 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             exp_name += f'_useOriNegPt'
         if args.add_origin_neg_points:
             exp_name += f'_addOriNegPt'
+        if args.post_mode !='':
+            exp_name += f'_post{args.post_mode}'
         exp_name += f'_sigma{args.recursive_blur_gauSigma}'
         save_path_dir = f'{parent_dir+exp_name}/'
         printd(f'{exp_name} ({args}')

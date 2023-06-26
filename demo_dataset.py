@@ -44,6 +44,7 @@ parser.add_argument('--use_blur', action='store_true')
 parser.add_argument('--use_fuse_mask_hm', action='store_true') 
 parser.add_argument('--use_origin_neg_points', action='store_true') 
 parser.add_argument('--add_origin_neg_points', action='store_true') 
+parser.add_argument('--post_mode', type=str, default='', help='') 
 parser.add_argument('--rdd_str', type=str, default='', help='text for redundant features as input of clip surgery') 
 parser.add_argument('--clip_use_neg_text', type=bool, default=False, help='negative text input for clip surgery') 
 parser.add_argument('--clip_neg_text_attn_thr', type=float, default=0.8, help='negative threshold for clip surgery') 
@@ -189,7 +190,9 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
                 plt.imsave(save_path_dir + img_name + f'_maskLog{i}.jpg', vis_mask_logit_l[i], cmap='gray')
                 plt.imsave(save_path_dir + img_name + f'_fuseSm{i}.jpg', vis_map_img[i])
                 plt.imsave(save_path_dir + img_name + f'_sam_pt{i}.jpg', vis_pt_l[i])
-    
+                if len(vis_dict['vis_mask0_l'])>i:
+                    plt.imsave(save_path_dir + img_name + f'_mask0_{i}.jpg', vis_dict['vis_mask0_l'][i], cmap='gray')
+        
         save_path_sam_pt = save_path_dir + img_name + f"_sam_pt.jpg"
         save_path_sam_pt_logit = save_path_dir + img_name + f"_sam_pt_logit.jpg"
         plt.imsave(save_path_sam_pt, vis_pt_l[-1])
