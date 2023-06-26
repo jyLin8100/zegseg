@@ -177,8 +177,6 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
                     cv2.circle(vis_input_img[j], (x, y), vis_radius_l[j][i], clr, vis_radius_l[j][i])
         
             for i in range(len(vis_map_img)):
-                plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_map_img[i])
-            for i in range(len(vis_input_img)):
                 plt.imsave(save_path_dir + img_name + f'_iptImg{i}.jpg', vis_input_img[i])
                 plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_clip_sm_img[i])
                 plt.imsave(save_path_dir + img_name + f'_maskLog{i}.jpg', vis_mask_logit_l[i], cmap='gray')
