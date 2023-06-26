@@ -107,6 +107,21 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
 
             # get positive points from individual maps (each sentence in the list), and negative points from the mean map
             points, labels, vis_radius, num = heatmap2points(sm, sm_mean, cur_image, args)
+            if (args.use_origin_neg_points or args.add_origin_neg_points)  and i==0:
+                ori_neg_points = points[:num]
+                ori_neg_labels = labels[:num]
+                ori_neg_vis_radius = vis_radius[:num]
+            
+            if args.use_origin_neg_points:
+                points = ori_neg_points + points[num:]
+                labels = np.concatenate([ori_neg_labels, labels[num:]], 0)
+                vis_radius = np.concatenate([ori_neg_vis_radius, vis_radius[num:]], 0)
+
+            
+            if args.add_origin_neg_points:
+                points = ori_neg_points + points
+                labels = np.concatenate([ori_neg_labels, labels], 0)
+                vis_radius = np.concatenate([ori_neg_vis_radius, vis_radius], 0)
 
             # Inference SAM with points from CLIP Surgery
             mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True)
@@ -341,6 +356,10 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             exp_name += f'_blur'
         if args.use_fuse_mask_hm:
             exp_name += f'_fuseMask'
+        if args.use_origin_neg_points:
+            exp_name += f'_useOriNegPt'
+        if args.add_origin_neg_points:
+            exp_name += f'_addOriNegPt'
         exp_name += f'_sigma{args.recursive_blur_gauSigma}'
         save_path_dir = f'{parent_dir+exp_name}/'
         printd(f'{exp_name} ({args}')
