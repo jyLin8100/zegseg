@@ -43,6 +43,7 @@ parser.add_argument('--clip_neg_text_attn_thr', type=float, default=0.8, help='n
 parser.add_argument('--clip_attn_qkv_strategy', type=str, default='vv', help='qkv attention strategy for clip surgery')  # vv(original), kk
 
 parser.add_argument('--test', action='store_true')  # store output in output_img_test
+parser.add_argument('--test_vis_dir', type=str, default='', )  # store output in output_img_test
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -63,7 +64,7 @@ if os.path.exists(cache_blip_filename):
     printd(f"loading BLIP text output from file: {cache_blip_filename}, length:{len(blip_text_l)}")
 
 parent_dir = f'output_img/{cache_blip_filename}/'
-if args.test:   parent_dir = f'output_img_test/{cache_blip_filename}/'
+if args.test:   parent_dir = f'output_img_test/{cache_blip_filename}_{args.test_vis_dir}/'
 save_path_dir = get_dir_from_args(args, config, parent_dir)
 
 
@@ -106,10 +107,10 @@ if len(blip_text_l)==0:
 import utils
 metric_fn = utils.calc_cod
 metric1, metric2, metric3, metric4 = 'sm', 'em', 'wfm', 'mae'
-val_metric1 = utils.Averager()
-val_metric2 = utils.Averager()
-val_metric3 = utils.Averager()
-val_metric4 = utils.Averager()
+val_metric1 = [utils.Averager() for i in range(args.recursive+1)]
+val_metric2 = [utils.Averager() for i in range(args.recursive+1)]
+val_metric3 = [utils.Averager() for i in range(args.recursive+1)]
+val_metric4 = [utils.Averager() for i in range(args.recursive+1)]
 
 
 ## run model
@@ -129,6 +130,13 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         vis_map_img = vis_dict['vis_map_img']
         vis_input_img = vis_dict['vis_input_img']
         vis_radius = vis_dict['vis_radius']
+        vis_mask_l = vis_dict['vis_mask_l']
+        vis_mask_logit_l = vis_dict['vis_mask_logit_l']
+        vis_radius_l = vis_dict['vis_radius_l']
+        points_l = vis_dict['points_l']
+        labels_l = vis_dict['labels_l']
+        num_l = vis_dict['num_l']
+        vis_clip_sm_img = vis_dict['vis_clip_sm_img']
 
     ## metric
     # align size of GT mask first
@@ -139,41 +147,47 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
                     transforms.Resize((inp_size, inp_size), interpolation=Image.NEAREST),
                     transforms.ToTensor(),
                 ])
-    vis_tensor = Image.fromarray(mask)
-    vis_tensor = mask_transform(vis_tensor)[0].view(1, 1, inp_size, inp_size)
-    result1, result2, result3, result4 = metric_fn(vis_tensor, tensor_gt)
-    
-    printd(f'{s_i}\t img_path:{img_path}\t text:{text}\t  {result1:.3f} {result2:.3f} {result3:.3f} {result4:.3f} num of points: {num}')
-    val_metric1.add(result1.item(), tensor_gt.shape[0])
-    val_metric2.add(result2.item(), tensor_gt.shape[0])
-    val_metric3.add(result3.item(), tensor_gt.shape[0])
-    val_metric4.add(result4.item(), tensor_gt.shape[0])
+    printd(f'{s_i}\t img_path:{img_path}\t text:{text}\t  ')
+    for i in range(args.recursive+1):
+        vis_tensor = Image.fromarray(vis_mask_l[i])
+        vis_tensor = mask_transform(vis_tensor)[0].view(1, 1, inp_size, inp_size)
+        result1, result2, result3, result4 = metric_fn(vis_tensor, tensor_gt)
+        
+        print(f'{result1:.3f} {result2:.3f} {result3:.3f} {result4:.3f} num of points: {num_l[i]}')
+        val_metric1[i].add(result1.item(), tensor_gt.shape[0])
+        val_metric2[i].add(result2.item(), tensor_gt.shape[0])
+        val_metric3[i].add(result3.item(), tensor_gt.shape[0])
+        val_metric4[i].add(result4.item(), tensor_gt.shape[0])
 
 
     ## visualization
     if s_i%1==0 and s_i<10:
-        vis_pt = np.expand_dims(255*mask, axis=2).repeat(3, axis=2)
         img_name = img_path.split('/')[-1][:-4]
+        vis_pt_l = [np.expand_dims(255*vis_mask_l[i], axis=2).repeat(3, axis=2) for i in range(len(vis_mask_l))]
         if not args.multi_mask_fusion:
-            for i, [x, y] in enumerate(points):
-                
-                if labels[i] == 0:
-                    clr = (0, 102, 255)
-                elif labels[i] == 1:
-                    clr = (255, 102, 51)
-                else:
-                    clr = (0, 255, 102)
-                cv2.circle(vis_pt, (x, y), vis_radius[i], clr, vis_radius[i])
-                cv2.circle(vis_input_img[-1], (x, y), vis_radius[i], clr, vis_radius[i])
+            for j in range(len(points_l)):
+                for i, [x, y] in enumerate(points_l[j]):
+                    if labels_l[j][i] == 0:
+                        clr = (0, 102, 255)
+                    elif labels_l[j][i] == 1:
+                        clr = (255, 102, 51)
+                    else:
+                        clr = (0, 255, 102)
+                    cv2.circle(vis_pt_l[j], (x, y), vis_radius_l[j][i], clr, vis_radius_l[j][i])
+                    cv2.circle(vis_input_img[j], (x, y), vis_radius_l[j][i], clr, vis_radius_l[j][i])
         
             for i in range(len(vis_map_img)):
                 plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_map_img[i])
             for i in range(len(vis_input_img)):
                 plt.imsave(save_path_dir + img_name + f'_iptImg{i}.jpg', vis_input_img[i])
+                plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_clip_sm_img[i])
+                plt.imsave(save_path_dir + img_name + f'_maskLog{i}.jpg', vis_mask_logit_l[i], cmap='gray')
+                plt.imsave(save_path_dir + img_name + f'_fuseSm{i}.jpg', vis_map_img[i])
+                plt.imsave(save_path_dir + img_name + f'_sam_pt{i}.jpg', vis_pt_l[i])
     
         save_path_sam_pt = save_path_dir + img_name + f"_sam_pt.jpg"
         save_path_sam_pt_logit = save_path_dir + img_name + f"_sam_pt_logit.jpg"
-        plt.imsave(save_path_sam_pt, vis_pt)
+        plt.imsave(save_path_sam_pt, vis_pt_l[-1])
         plt.imsave(save_path_sam_pt_logit, mask_logit, cmap='gray')
 
         # save_path_sam_pt_logit_img = save_path_dir + img_name + f"_sam_pt_logit_img.jpg"
@@ -187,8 +201,9 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         # save_path_gt = save_path_dir + img_name + f"_gt.jpg"
         # plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')
         # plt.imsave(save_path_gt, tensor_gt.view(1024,1024).numpy(), cmap='gray')
-
-print(val_metric1.item(),                
-                val_metric2.item(),
-                val_metric3.item(),
-                val_metric4.item(),)
+for i in range(args.recursive+1):
+    print(val_metric1[i].item(),                
+          val_metric2[i].item(),
+          val_metric3[i].item(),
+          val_metric4[i].item(),)
+ 

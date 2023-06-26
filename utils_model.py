@@ -1,3 +1,4 @@
+from asyncio import wait
 import clip
 import torch
 import cv2
@@ -8,14 +9,6 @@ import torch.nn.functional as F
 import datetime
 BICUBIC = InterpolationMode.BICUBIC
 
-from scipy.ndimage import gaussian_filter
-import scipy
-
-
-use_origin_img=False
-use_dilation=False
-dilation_k=20
-print(f'use_origin_img:{use_origin_img}, use_dilation:{use_dilation}, dilation_k:{dilation_k},')
 eps = 1e-7
 
 def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config):
@@ -68,40 +61,96 @@ def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, confi
 
     return mask, mask_logit, points, labels, num, vis_dict
 
-def get_mask(pil_img, text, sam_predictor, clip_model, args, device):
+# def get_mask(pil_img, text, sam_predictor, clip_model, args, device):
 
-    cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-    with torch.no_grad():
-        # get heatmap
-        sm_mean, sm, vis_map_img, vis_input_img, original_sm_norm = get_heatmap(pil_img, text, clip_model, args, device)
+    
+#     with torch.no_grad():
+#         # get heatmap
+#         sm_mean, sm, vis_map_img, vis_input_img, original_sm_norm = get_heatmap(pil_img, text, clip_model, args, device)
 
-        # get positive points from individual maps (each sentence in the list), and negative points from the mean map
-        points, labels, vis_radius, num = heatmap2points(sm, sm_mean, cv2_img, args)
 
-        if args.clip_use_neg_text:
-            sm_mean_n, sm_n, vis_map_img_n, vis_input_img_n, original_sm_norm_n = get_heatmap(pil_img, ['background'], clip_model, args, device)
-            points_n, labels_n, vis_radius_n, num_n = heatmap2points(sm_n, sm_mean_n, cv2_img, args, attn_thr=args.clip_neg_text_attn_thr )
-            points = points + points_n[-num_n:]
-            labels = np.concatenate([labels, 1+labels_n[-num_n:]], 0)
-            vis_radius = np.concatenate([vis_radius, vis_radius_n[-num_n:]], 0)
 
-        # Inference SAM with points from CLIP Surgery
-        sam_predictor.set_image(np.array(pil_img))
-        mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True)
-        mask_logit_origin = mask_logit_origin[np.argmax(scores)]
-        mask = mask_logit_origin > sam_predictor.model.mask_threshold
-        mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() * 255
-        mask = mask.astype('uint8')
-        mask_logit = mask_logit.astype('uint8')
-    vis_dict = {'vis_map_img': vis_map_img,
-                'vis_input_img': vis_input_img, 
-                'vis_radius': vis_radius,
-                'original_sm_norm': original_sm_norm}
+#     vis_dict = {'vis_map_img': vis_map_img,
+#                 'vis_input_img': vis_input_img, 
+#                 'vis_radius': vis_radius,
+#                 'original_sm_norm': original_sm_norm}
         
+#     return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
+
+def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
+    
+    vis_input_img = []
+    vis_map_img = []  # map applied to img in next iteration
+    vis_clip_sm_img = []  # heatmap from clip surgery
+    sm_l = []
+    sm_mean_l = []
+
+    vis_mask_l = []
+    vis_mask_logit_l = []
+    vis_radius_l = []
+    points_l = []
+    labels_l = []
+    num_l = []
+
+    ori_image = np.array(pil_img)
+
+    sam_predictor.set_image(ori_image)
+
+    cur_image = ori_image
+    vis_input_img.append(cur_image.astype('uint8'))
+    with torch.no_grad():
+        for i in range(args.recursive+1):
+            sm, sm_mean, sm_logit = clip_surgery(cur_image, text, clip_model, args, device='cuda')
+            if i==0:    original_sm_norm = sm_logit[..., 0]
+
+            # get positive points from individual maps (each sentence in the list), and negative points from the mean map
+            points, labels, vis_radius, num = heatmap2points(sm, sm_mean, cur_image, args)
+
+            # Inference SAM with points from CLIP Surgery
+            mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True)
+            mask_logit_origin = mask_logit_origin[np.argmax(scores)]
+            mask = mask_logit_origin > sam_predictor.model.mask_threshold
+            mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() 
+
+            # update input image for next iter
+            cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+            
+            # collect for visualization
+            vis_input_img.append(cur_image.astype('uint8'))
+            vis_clip_sm_img.append((255*sm_logit[...,0]).astype('uint8'))
+            vis_map_img.append((255*sm1[...,0]).astype('uint8'))
+            sm_l.append(sm)
+            sm_mean_l.append(sm_mean)
+
+            vis_mask_l.append(mask.astype('uint8'))
+            vis_mask_logit_l.append((mask_logit * 255).astype('uint8'))
+            vis_radius_l.append(vis_radius)
+            points_l.append(points)
+            labels_l.append(labels)
+            num_l.append(num)
+
+
+
+        vis_dict = {'vis_map_img': vis_map_img,
+                'vis_clip_sm_img': vis_clip_sm_img,
+                'vis_input_img': vis_input_img, 
+                'vis_radius': vis_radius_l[-1],
+                'original_sm_norm': original_sm_norm,
+                'vis_mask_l': vis_mask_l,
+                'vis_mask_logit_l': vis_mask_logit_l,
+                'vis_radius_l': vis_radius_l,
+                'points_l': points_l,
+                'labels_l': labels_l,
+                'num_l': num_l,
+        
+    return vis_mask_l[-1], vis_mask_logit_l[-1], mask_logit_origin, points_l[-1], labels_l[-1], num_l[-1], vis_dict
     return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
 
-def get_heatmap(pil_img, text, model, args, device='cuda'):
-    
+    return sm_mean_l[-1], sm_l[-1], vis_map_img, vis_input_img, original_sm_norm
+
+
+def clip_surgery(np_img, text, model, args, device='cuda'):
+    pil_img = Image.fromarray(np_img.astype(np.uint8))
     preprocess =  Compose([Resize((224, 224), interpolation=BICUBIC), ToTensor(),
             Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))])
     image = preprocess(pil_img).unsqueeze(0).to(device)
@@ -118,84 +167,22 @@ def get_heatmap(pil_img, text, model, args, device='cuda'):
 
     # Combine features after removing redundant features and min-max norm
     sm = clip.clip_feature_surgery(image_features, text_features, redundant_features)[0, 1:, :]  # 整个输出：torch.Size([1, 197, x])  # 最后的1，是text这个list 的长度。
-
     sm_norm = (sm - sm.min(0, keepdim=True)[0]) / (sm.max(0, keepdim=True)[0] - sm.min(0, keepdim=True)[0])
     sm_mean = sm_norm.mean(-1, keepdim=True)
 
-    vis_input_img = []
-    cur_image = np.array(pil_img)
-    origin_image = cur_image
-    # vis_input_img.append(cur_image)
-    vis_map_img = []
-
+    # expand similarity map to original image size, normalize. to apply to image for next iter
+    h, w = np_img.shape[:2]
+    def _norm_sm(_sm, h, w):
+        side = int(_sm.shape[0] ** 0.5)
+        _sm = _sm.reshape(1, 1, side, side)
+        _sm = torch.nn.functional.interpolate(_sm, (h, w), mode='bilinear')[0, 0, :, :].unsqueeze(-1)
+        _sm = (_sm - _sm.min()) / (_sm.max() - _sm.min())
+        _sm = _sm.cpu().numpy()
+        return _sm
     sm1 = sm_mean
-    side = int(sm1.shape[0] ** 0.5)
-    sm1 = sm1.reshape(1, 1, side, side)
-    sm1 = torch.nn.functional.interpolate(sm1, (cur_image.shape[0], cur_image.shape[1]), mode='bilinear')[0, 0, :, :].unsqueeze(-1)
-    sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
-    sm1 = sm1.cpu().numpy()
+    sm1 = _norm_sm(sm1, h, w) 
+    return sm, sm_mean, sm1
 
-
-
-    if use_dilation:
-        sm1d = sm1.reshape(cur_image.shape[0], cur_image.shape[1])
-        sm1d = scipy.ndimage.grey_dilation(sm1d, size=(dilation_k,dilation_k))
-        sm1 = np.clip(sm1d.reshape(cur_image.shape[0], cur_image.shape[1], 1),0,1)
-    
-    if use_origin_img:
-        cur_image = origin_image
-    cur_image_bg = np.clip(gaussian_filter(cur_image, sigma=args.recursive_blur_gauSigma),0,255) * (1-sm1)
-    cur_image_fg = cur_image * sm1
-    cur_image = (cur_image_fg + cur_image_bg) * args.recursive_coef + cur_image * (1-args.recursive_coef)
-
-    vis_input_img.append(cur_image.astype('uint8'))
-    vis_map_img.append((255*sm1[...,0]).astype('uint8'))
-    original_sm_norm=sm1[...,0]
-    if args.recursive==0:
-        return sm_mean, sm, vis_map_img, vis_input_img, original_sm_norm
-
-    sm_l = [sm]
-    sm_mean_l = [sm_mean]
-    for i in range(args.recursive):
-        cur_input_image = Image.fromarray(cur_image.astype(np.uint8))
-        cur_input_image = preprocess(cur_input_image).unsqueeze(0).to(device)
-        image_features = model.encode_image(cur_input_image)
-        image_features = image_features / image_features.norm(dim=1, keepdim=True)    # torch.Size([1, 197, 512])
-        sm = clip.clip_feature_surgery(image_features, text_features, redundant_features)[0, 1:, :]  # 整个输出：torch.Size([1, 197, x])  # 最后的1，是text这个list 的长度。
-        sm_norm = (sm - sm.min(0, keepdim=True)[0]) / (sm.max(0, keepdim=True)[0] - sm.min(0, keepdim=True)[0])
-        sm_mean = sm_norm.mean(-1, keepdim=True)
-        sm1 = sm_mean
-
-        side = int(sm1.shape[0] ** 0.5)
-        sm1 = sm1.reshape(1, 1, side, side)
-        sm1 = torch.nn.functional.interpolate(sm1, (cur_image.shape[0], cur_image.shape[1]), mode='bilinear')[0, 0, :, :].unsqueeze(-1)
-        sm1 = (sm1 - sm1.min()) / (sm1.max() - sm1.min())
-        sm1 = sm1.cpu().numpy()
-        # if i+1 < args.recursive:
-        #     sm1 = np.clip(sm1+(1-args.attn_thr), 0, 1) # lin
-        
-        if use_dilation:
-            sm1d = sm1.reshape(cur_image.shape[0], cur_image.shape[1])
-            sm1d = scipy.ndimage.grey_dilation(sm1d, size=(dilation_k,dilation_k))
-            sm1 = np.clip(sm1d.reshape(cur_image.shape[0], cur_image.shape[1], 1),0,1)
-
-        if use_origin_img:
-            cur_image = origin_image
-
-        cur_image_bg = np.clip(gaussian_filter(cur_image, sigma=args.recursive_blur_gauSigma),0,255) * (1-sm1)
-        cur_image_fg = cur_image * sm1
-        cur_image = (cur_image_fg + cur_image_bg) * args.recursive_coef + cur_image * (1-args.recursive_coef)
-
-        
-       
-        
-        # cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
-        vis_input_img.append(cur_image.astype('uint8'))
-        vis_map_img.append((255*sm1[...,0]).astype('uint8'))
-        sm_l.append(sm)
-        sm_mean_l.append(sm_mean)
-
-    return sm_mean_l[-1], sm_l[-1], vis_map_img, vis_input_img, original_sm_norm
 
 def get_text_from_img(img_path, pil_img, BLIP_dict=None, model=None, vis_processors=None, device='cuda'):
     if BLIP_dict.get(img_path) is not None:
@@ -238,7 +225,8 @@ def get_text_from_img(img_path, pil_img, BLIP_dict=None, model=None, vis_process
     print('text:', text)
     return text
 
-def heatmap2points(sm, sm_mean, cv2_img, args, attn_thr=-1):
+def heatmap2points(sm, sm_mean, np_img, args, attn_thr=-1):
+    cv2_img = cv2.cvtColor(np_img.astype('uint8'), cv2.COLOR_RGB2BGR)
     if attn_thr < 0:
         attn_thr = args.attn_thr
     map_l=[]
@@ -290,8 +278,7 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             parent_dir += f'_qkv{args.clip_attn_qkv_strategy}'
         if args.multi_mask_fusion_strategy!='avg':
             parent_dir += f'_fuse{args.multi_mask_fusion_strategy}'
-        exp_name += f'_sigma{args.recursive_blur_gauSigma}'
-        
+
         num_mask = len(config['mask_params']['down_sample'])
         printd(f'fusing: {parent_dir.split("/")[-1]}')
         for idx in range(num_mask):
@@ -323,7 +310,6 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             exp_name += f'_rdd{args.rdd_str}'
         if args.clip_attn_qkv_strategy!='vv':
             exp_name += f'_qkv{args.clip_attn_qkv_strategy}'
-        exp_name += f'_sigma{args.recursive_blur_gauSigma}'
         save_path_dir = f'{parent_dir+exp_name}/'
         printd(f'{exp_name} ({args}')
 
