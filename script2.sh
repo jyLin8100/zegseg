@@ -7,6 +7,8 @@
 #$ -l gpu=1     # request 1 GPU
 ##$ -l cluster=andrena # use the Andrena nodes
 
+# note: try modifying inputs for clip, using blur, ema, fuse mask, use original neg points, post refienment for SAM (6-28) 
+
 module load python
 source ~/pytorchenv1/bin/activate
 
