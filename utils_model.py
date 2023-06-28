@@ -550,7 +550,9 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             exp_name += f'_addOriNegPt'
         if args.post_mode !='':
             exp_name += f'_post{args.post_mode}'
-        exp_name += f'_sigma{args.recursive_blur_gauSigma}'
+        if args.multi_head:
+            exp_name += f'_mulHead'
+
         save_path_dir = f'{parent_dir+exp_name}/'
         printd(f'{exp_name} ({args}')
 

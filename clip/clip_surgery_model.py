@@ -56,11 +56,19 @@ class Bottleneck(nn.Module):
 
 # implement attention module for v-v self-attention
 class Attention(nn.Module):
-    def __init__(self, out_dim, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., settings='', attn_qkv_strategy='vv'):
+    def __init__(self, out_dim, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., settings='', 
+                    attn_qkv_strategy='vv',
+                    multi_head=False):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
+        if multi_head:
+            head_dim_0 = dim // 16
+            head_dim_1 = dim // 32
         self.scale = qk_scale or head_dim ** -0.5
+        if multi_head:
+            self.scale_0 = qk_scale or head_dim_0 ** -0.5
+            self.scale_1 = qk_scale or head_dim_1 ** -0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -69,12 +77,19 @@ class Attention(nn.Module):
         self.settings = settings
 
         self.attn_qkv_strategy = attn_qkv_strategy
+        self.multi_head = multi_head
 
     def forward(self, x):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        if self.multi_head:
+            qkv_0 = self.qkv(x).reshape(B, N, 3, 16, C//16).permute(2, 0, 3, 1, 4)
+            qkv_1 = self.qkv(x).reshape(B, N, 3, 32, C//32).permute(2, 0, 3, 1, 4)
 
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        if self.multi_head:
+            q_0, k_0, v_0 = qkv_0[0], qkv_0[1], qkv_0[2]
+            q_1, k_1, v_1 = qkv_1[0], qkv_1[1], qkv_1[2]
         # original self-attention for the original path
         attn_ori = (q @ k.transpose(-2, -1)) * self.scale
         attn_ori = attn_ori.softmax(dim=-1)
@@ -84,8 +99,16 @@ class Attention(nn.Module):
         if self.attn_qkv_strategy=='vv':
             k = v
             q = k
+            if self.multi_head:
+                k_0 = v_0
+                q_0 = k_0
+                k_1 = v_1
+                q_1 = k_1
         elif self.attn_qkv_strategy=='kk':
             q = k
+            if self.multi_head:
+                q_0 = k_0
+                q_1 = k_1
         else:
             k = v
             q = k
@@ -98,22 +121,41 @@ class Attention(nn.Module):
             scale = self.scale * 8
         else:
             scale = self.scale
+            if self.multi_head:
+                scale_0 = self.scale_0
+                scale_1 = self.scale_1
         
         # self-attention, higher temperate for resnets performs better
         attn = (q @ k.transpose(-2, -1)) * scale
         attn = (attn).softmax(dim=-1)
         attn = self.attn_drop(attn)
 
+        if self.multi_head:
+            attn_0 = (q_0 @ k_0.transpose(-2, -1)) * scale_0
+            attn_0 = (attn_0).softmax(dim=-1)
+            attn_0 = self.attn_drop(attn_0)
+
+            attn_1 = (q_1 @ k_1.transpose(-2, -1)) * scale_1
+            attn_1 = (attn_1).softmax(dim=-1)
+            attn_1 = self.attn_drop(attn_1)
         x_ori = (attn_ori @ v).transpose(1, 2).reshape(B, N, C)
         x = (attn @ v).transpose(1, 2).reshape(B, N, C) # clip_surgery
+        if self.multi_head:
+            x_0 = (attn_0 @ v_0).transpose(1, 2).reshape(B, N, C) # clip_surgery
+            x_1 = (attn_1 @ v_1).transpose(1, 2).reshape(B, N, C) # clip_surgery
         #x = v.transpose(1, 2).reshape(B, N, C) # mask_clip
-        x = self.proj_drop(self.proj(x))
+        
+        if self.multi_head:
+            x = self.proj_drop(self.proj(x+x_0+x_1))
+        else:
+            x = self.proj_drop(self.proj(x))
         x_ori = self.proj_drop(self.proj(x_ori))
         return [x, x_ori]
 
 
 class AttentionPool2d(nn.Module):
-    def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None, attn_qkv_strategy:str='vv'):
+    def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None, attn_qkv_strategy:str='vv',
+                    multi_head=False):
         super().__init__()
         self.positional_embedding = nn.Parameter(torch.randn(spacial_dim ** 2 + 1, embed_dim) / embed_dim ** 0.5)
         self.k_proj = nn.Linear(embed_dim, embed_dim)
@@ -128,11 +170,12 @@ class AttentionPool2d(nn.Module):
         self.output_dim = output_dim
 
         self.attn_qkv_strategy = attn_qkv_strategy
+        self.multi_head = multi_head
 
     def forward(self, x):
         # reform transformer layer after init and load weights, using v only
         if self.attn == None:
-            self.attn = Attention(self.output_dim, self.embed_dim, self.num_heads, True, attn_qkv_strategy=self.attn_qkv_strategy)
+            self.attn = Attention(self.output_dim, self.embed_dim, self.num_heads, True, attn_qkv_strategy=self.attn_qkv_strategy, multi_head=self.multi_head)
             self.attn.qkv.weight = torch.nn.Parameter(torch.cat([self.v_proj.weight, self.v_proj.weight, self.v_proj.weight], 0))
             self.attn.qkv.bias = torch.nn.Parameter(torch.cat([self.v_proj.bias, self.v_proj.bias, self.v_proj.bias]))
             self.attn.proj.weight = self.c_proj.weight
@@ -167,7 +210,8 @@ class ModifiedResNet(nn.Module):
     - The final pooling layer is a QKV attention instead of an average pool
     """
 
-    def __init__(self, layers, output_dim, heads, input_resolution=224, width=64, attn_qkv_strategy='vv'):
+    def __init__(self, layers, output_dim, heads, input_resolution=224, width=64, attn_qkv_strategy='vv',
+                    multi_head=False):
         super().__init__()
         self.output_dim = output_dim
         self.input_resolution = input_resolution
@@ -192,7 +236,7 @@ class ModifiedResNet(nn.Module):
         self.layer4 = self._make_layer(width * 8, layers[3], stride=2)
 
         embed_dim = width * 32  # the ResNet feature dimension
-        self.attnpool = AttentionPool2d(input_resolution // 32, embed_dim, heads, output_dim, attn_qkv_strategy=attn_qkv_strategy)
+        self.attnpool = AttentionPool2d(input_resolution // 32, embed_dim, heads, output_dim, attn_qkv_strategy=attn_qkv_strategy, multi_head=multi_head)
 
     def _make_layer(self, planes, blocks, stride=1):
         layers = [Bottleneck(self._inplanes, planes, stride)]
@@ -302,7 +346,7 @@ class Transformer(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, output_dim: int, attn_qkv_strategy:str='vv'):
+    def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, output_dim: int, attn_qkv_strategy:str='vv', multi_head:bool=False):
         super().__init__()
         self.input_resolution = input_resolution
         self.output_dim = output_dim
@@ -322,6 +366,7 @@ class VisionTransformer(nn.Module):
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
 
         self.attn_qkv_strategy = attn_qkv_strategy
+        self.multi_head = multi_head
 
     @torch.no_grad()
     def forward(self, x: torch.Tensor):
@@ -331,7 +376,7 @@ class VisionTransformer(nn.Module):
             
             # apply architecture surgery on the last 6 blocks
             for i in range(1, 7): # surgery 7, maskclip 2
-                self.attn = Attention(self.embed_dim, self.embed_dim, self.num_heads, True, attn_qkv_strategy=self.attn_qkv_strategy)
+                self.attn = Attention(self.embed_dim, self.embed_dim, self.num_heads, True, attn_qkv_strategy=self.attn_qkv_strategy, multi_head=self.multi_head)
                 self.attn.qkv.weight.data = self.transformer.resblocks[-i].attn.in_proj_weight.clone()
                 self.attn.qkv.bias.data = self.transformer.resblocks[-i].attn.in_proj_bias.clone()
                 self.attn.proj.weight.data = self.transformer.resblocks[-i].attn.out_proj.weight.clone()
@@ -406,6 +451,7 @@ class CLIPSurgery(nn.Module):
                 heads=vision_heads,
                 output_dim=embed_dim,
                 attn_qkv_strategy=params['attn_qkv_strategy'],
+                multi_head=params['multi_head']
             )
 
         self.transformer = Transformer(

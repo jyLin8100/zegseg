@@ -49,6 +49,8 @@ parser.add_argument('--rdd_str', type=str, default='', help='text for redundant 
 parser.add_argument('--clip_use_neg_text', type=bool, default=False, help='negative text input for clip surgery') 
 parser.add_argument('--clip_neg_text_attn_thr', type=float, default=0.8, help='negative threshold for clip surgery') 
 parser.add_argument('--clip_attn_qkv_strategy', type=str, default='vv', help='qkv attention strategy for clip surgery')  # vv(original), kk
+parser.add_argument('--multi_head', action='store_true', help='qkv attention strategy for clip surgery')  # 
+
 
 parser.add_argument('--test', action='store_true')  # store output in output_img_test
 parser.add_argument('--test_vis_dir', type=str, default='', )  # store output in output_img_test
@@ -98,7 +100,7 @@ import clip
 sam = sam_model_registry[args.sam_model_type](checkpoint=args.sam_checkpoint)
 sam.to(device=device)
 sam_predictor = SamPredictor(sam)
-clip_params={ 'attn_qkv_strategy':args.clip_attn_qkv_strategy}
+clip_params={ 'attn_qkv_strategy':args.clip_attn_qkv_strategy, 'multi_head':args.multi_head}
 clip_model, _ = clip.load(args.clip_model, device=device, params=clip_params)
 clip_model.eval()
 use_cache_blip = True
