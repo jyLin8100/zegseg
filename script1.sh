@@ -7,7 +7,7 @@
 #$ -l gpu=1     # request 1 GPU
 ##$ -l cluster=andrena # use the Andrena nodes
 
-# test blur:0.5,1,5; test: use_origin_img; dilation=20,40,100
+# note:  test blur:0.5,1,5; test: use_origin_img; dilation=20,40,100
 
 module load python
 source ~/pytorchenv1/bin/activate
