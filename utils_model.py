@@ -94,6 +94,7 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
     labels_l = []
     num_l = []
     vis_mask0_l = []  # mask before post refine. 
+    bbox_list = []  # for port_mode =='MaxIOUBoxSAMInput':
 
     ori_image = np.array(pil_img)
 
