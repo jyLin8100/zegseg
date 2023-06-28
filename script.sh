@@ -12,7 +12,7 @@ source ~/pytorchenv1/bin/activate
 
 cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
 
- # baseline
+  # baseline
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk.log 
 
 ## 1. mulhead & MaxIOUBoxSAMInput
