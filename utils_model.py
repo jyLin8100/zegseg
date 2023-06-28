@@ -307,7 +307,40 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
                     multimask_output=True,
                     return_logits=True)
 
-            
+            # 7. use max iou box from last mask
+            elif args.post_mode =='MaxIOUBoxSAMInput':
+                if i==0:
+                    mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                else:
+                    mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), box=bbox_list[i-1][None, :],multimask_output=True, return_logits=True)
+                mask = mask_logit_origin[np.argmax(scores)] > sam_predictor.model.mask_threshold
+
+                #计算最可能的bbox
+                contours, _ = cv2.findContours(mask.copy().astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                bboxes = []
+                overlaps = []
+                for contour in contours:
+                    x, y, w, h = cv2.boundingRect(contour)
+                    bbox = np.array([x, y, x + w, y + h])
+                    bboxes.append(bbox)
+                    overlap = (w * h) / np.sum(mask)
+                    overlaps.append(overlap)
+                bboxes = np.array(bboxes)
+                overlaps = np.array(overlaps)
+                max_overlap_idx = np.argmax(overlaps)
+                max_bbox = bboxes[max_overlap_idx]
+                scaled_bbox = max_bbox.copy()
+                scaled_bbox[:2] -= np.floor((scaled_bbox[2:] - scaled_bbox[:2]) * 0.1).astype(int)
+                scaled_bbox[2:] += np.ceil((scaled_bbox[2:] - scaled_bbox[:2]) * 0.1).astype(int)
+                bboxes[max_overlap_idx] = scaled_bbox
+                bboxes = bboxes[max_overlap_idx]
+                bbox_list.append(bboxes)
+                # # 绘制边界框矩形
+                # image_bgr = cv2.cvtColor(cur_image.astype('uint8'), cv2.COLOR_RGB2BGR)
+                # x_min, y_min, x_max, y_max = bboxes.astype(int)
+                # cv2.rectangle(image_bgr, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+                # image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+                # vis_input_img.append(image_rgb.astype('uint8'))
             else:
                 mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
 
