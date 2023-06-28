@@ -365,12 +365,22 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
             
             if args.use_origin_img:
                 cur_image = ori_image
+            
+            if args.use_blur and args.use_blur1:
+                exit()
             if args.use_blur:
                 cur_image_bg = np.clip(gaussian_filter(cur_image, sigma=args.recursive_blur_gauSigma),0,255) * (1-sm1)
                 cur_image_fg = cur_image * sm1
                 cur_image = (cur_image_fg + cur_image_bg) * args.recursive_coef + cur_image * (1-args.recursive_coef)
+            elif args.use_blur1:  # EMA blur
+                cur_image_bg = np.clip(gaussian_filter(ori_image, sigma=args.recursive_blur_gauSigma),0,255) * (1-sm1)
+                cur_image_fg = ori_image * sm1
+                cur_image = (cur_image_fg + cur_image_bg) * args.recursive_coef + cur_image * (1-args.recursive_coef)
             else:
-                cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+                if args.clipInputEMA:
+                    cur_image = ori_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+                else:
+                    cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
             
             # collect for visualization
             vis_input_img.append(cur_image.astype('uint8'))
@@ -576,6 +586,12 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             exp_name += f'_dilation{args.dilation_k}'
         if args.use_blur:
             exp_name += f'_blur'
+            exp_name += f'_sigma{args.recursive_blur_gauSigma}'
+        if args.use_blur1:
+            exp_name += f'_blur1'
+            exp_name += f'_sigma{args.recursive_blur_gauSigma}'
+        if args.clipInputEMA:  # darken
+            exp_name += f'_clipInputEMA'
         if args.use_fuse_mask_hm:
             exp_name += f'_fuseMask'
         if args.use_origin_neg_points:
