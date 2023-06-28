@@ -9,6 +9,8 @@ import torch.nn.functional as F
 import datetime
 BICUBIC = InterpolationMode.BICUBIC
 
+from scipy.ndimage import gaussian_filter
+import scipy
 eps = 1e-7
 
 def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config):
@@ -61,60 +63,133 @@ def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, confi
 
     return mask, mask_logit, points, labels, num, vis_dict
 
-# def get_mask(pil_img, text, sam_predictor, clip_model, args, device):
 
-    
-#     with torch.no_grad():
-#         # get heatmap
-#         sm_mean, sm, vis_map_img, vis_input_img, original_sm_norm = get_heatmap(pil_img, text, clip_model, args, device)
+def fuse_mask(mask_logit_origin_l, sam_thr, fuse='avg'):
 
+    num_mask = len(mask_logit_origin_l)
+    if fuse=='avg':  
+        mask_logit_origin = sum(mask_logit_origin_l)/num_mask  # 
+        mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy()
+        mask = mask_logit_origin > sam_thr
 
+    mask = mask.astype('uint8')
+    mask_logit *= 255
+    mask_logit = mask_logit.astype('uint8')
 
-#     vis_dict = {'vis_map_img': vis_map_img,
-#                 'vis_input_img': vis_input_img, 
-#                 'vis_radius': vis_radius,
-#                 'original_sm_norm': original_sm_norm}
-        
-#     return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
+    return mask, mask_logit
 
 def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
     
     vis_input_img = []
-    vis_map_img = []
+    vis_map_img = []  # map applied to img in next iteration
+    vis_clip_sm_img = []  # heatmap from clip surgery
     sm_l = []
     sm_mean_l = []
 
     vis_mask_l = []
     vis_mask_logit_l = []
+    mask_logit_origin_l = []
     vis_radius_l = []
     points_l = []
     labels_l = []
     num_l = []
+    vis_mask0_l = []  # mask before post refine. 
+    bbox_list = []  # for port_mode =='MaxIOUBoxSAMInput':
 
     ori_image = np.array(pil_img)
 
-    sam_predictor.set_image(np.array(ori_image))
+    sam_predictor.set_image(ori_image)
 
     cur_image = ori_image
+    vis_input_img.append(cur_image.astype('uint8'))
     with torch.no_grad():
         for i in range(args.recursive+1):
-            sm, sm_mean, sm1 = clip_surgery(cur_image, text, clip_model, args, device='cuda')
-            if i==0:    original_sm_norm = sm1[..., 0]
+            sm, sm_mean, sm_logit = clip_surgery(cur_image, text, clip_model, args, device='cuda')
+            if i==0:    original_sm_norm = sm_logit[..., 0]
 
             # get positive points from individual maps (each sentence in the list), and negative points from the mean map
             points, labels, vis_radius, num = heatmap2points(sm, sm_mean, cur_image, args)
 
             # Inference SAM with points from CLIP Surgery
-            mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True)
+            # 1 use fused attn map(sm1) as mask input. -> hm 某些低亮度低也会被纳入mask。
+            if args.post_mode=='PostLogit':
+                mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                # Cascaded Post-refinement-1: use low-res mask
+                best_idx = np.argmax(scores)
+                mask_logit_origin, scores, logits,  = sam_predictor.predict(
+                            point_coords=np.array(points),
+                            point_labels=labels,
+                            mask_input=logits[best_idx: best_idx + 1, :, :], 
+                            multimask_output=True,
+                            return_logits=True)
+            # 4. get box from first output as box input.
+            elif args.post_mode == 'PostBox':
+                mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                best_idx = np.argmax(scores)
+                mask = mask_logit_origin[best_idx] > sam_predictor.model.mask_threshold
+                y, x = np.nonzero(mask)
+                x_min = x.min()
+                x_max = x.max()
+                y_min = y.min()
+                y_max = y.max()
+                input_box = np.array([x_min, y_min, x_max, y_max])
+                mask_logit_origin, scores, logits,  = sam_predictor.predict(
+                    point_coords=np.array(points),
+                    point_labels=labels,
+                    box=input_box[None, :],
+                    multimask_output=True,
+                    return_logits=True)
+            # 7. use max iou box from last mask
+            elif args.post_mode =='MaxIOUBoxSAMInput':
+                if i==0:
+                    mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+                else:
+                    mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), box=bbox_list[i-1][None, :],multimask_output=True, return_logits=True)
+                mask = mask_logit_origin[np.argmax(scores)] > sam_predictor.model.mask_threshold
+                #计算最可能的bbox
+                contours, _ = cv2.findContours(mask.copy().astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                bboxes = []
+                overlaps = []
+                for contour in contours:
+                    x, y, w, h = cv2.boundingRect(contour)
+                    bbox = np.array([x, y, x + w, y + h])
+                    bboxes.append(bbox)
+                    overlap = (w * h) / np.sum(mask)
+                    overlaps.append(overlap)
+                bboxes = np.array(bboxes)
+                overlaps = np.array(overlaps)
+                max_overlap_idx = np.argmax(overlaps)
+                max_bbox = bboxes[max_overlap_idx]
+                scaled_bbox = max_bbox.copy()
+                scaled_bbox[:2] -= np.floor((scaled_bbox[2:] - scaled_bbox[:2]) * 0.1).astype(int)
+                scaled_bbox[2:] += np.ceil((scaled_bbox[2:] - scaled_bbox[:2]) * 0.1).astype(int)
+                bboxes[max_overlap_idx] = scaled_bbox
+                bboxes = bboxes[max_overlap_idx]
+                bbox_list.append(bboxes)
+            else:
+                mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
+
+
             mask_logit_origin = mask_logit_origin[np.argmax(scores)]
+            mask_logit_origin_l.append(mask_logit_origin)
             mask = mask_logit_origin > sam_predictor.model.mask_threshold
             mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() 
 
             # update input image for next iter
-            cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+            sm1 = sm_logit
+            if args.use_blur1:  # EMA blur
+                cur_image_bg = np.clip(gaussian_filter(ori_image, sigma=args.recursive_blur_gauSigma),0,255) * (1-sm1)
+                cur_image_fg = ori_image * sm1
+                cur_image = (cur_image_fg + cur_image_bg) * args.recursive_coef + cur_image * (1-args.recursive_coef)
+            else:
+                if args.clipInputEMA:
+                    cur_image = ori_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
+                else:
+                    cur_image = cur_image * sm1 * args.recursive_coef + cur_image * (1-args.recursive_coef)
             
             # collect for visualization
             vis_input_img.append(cur_image.astype('uint8'))
+            vis_clip_sm_img.append((255*sm_logit[...,0]).astype('uint8'))
             vis_map_img.append((255*sm1[...,0]).astype('uint8'))
             sm_l.append(sm)
             sm_mean_l.append(sm_mean)
@@ -129,9 +204,18 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
 
 
         vis_dict = {'vis_map_img': vis_map_img,
+                'vis_clip_sm_img': vis_clip_sm_img,
                 'vis_input_img': vis_input_img, 
                 'vis_radius': vis_radius_l[-1],
-                'original_sm_norm': original_sm_norm}
+                'original_sm_norm': original_sm_norm,
+                'vis_mask_l': vis_mask_l,
+                'vis_mask_logit_l': vis_mask_logit_l,
+                'vis_radius_l': vis_radius_l,
+                'points_l': points_l,
+                'labels_l': labels_l,
+                'num_l': num_l,
+                'vis_mask0_l': vis_mask0_l,
+                'mask_logit_origin_l': mask_logit_origin_l,}
         
     return vis_mask_l[-1], vis_mask_logit_l[-1], mask_logit_origin, points_l[-1], labels_l[-1], num_l[-1], vis_dict
     return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
@@ -216,7 +300,7 @@ def get_text_from_img(img_path, pil_img, BLIP_dict=None, model=None, vis_process
     return text
 
 def heatmap2points(sm, sm_mean, np_img, args, attn_thr=-1):
-    cv2_img = cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR)
+    cv2_img = cv2.cvtColor(np_img.astype('uint8'), cv2.COLOR_RGB2BGR)
     if attn_thr < 0:
         attn_thr = args.attn_thr
     map_l=[]
@@ -268,6 +352,7 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             parent_dir += f'_qkv{args.clip_attn_qkv_strategy}'
         if args.multi_mask_fusion_strategy!='avg':
             parent_dir += f'_fuse{args.multi_mask_fusion_strategy}'
+        exp_name += f'_sigma{args.recursive_blur_gauSigma}'
 
         num_mask = len(config['mask_params']['down_sample'])
         printd(f'fusing: {parent_dir.split("/")[-1]}')
@@ -300,6 +385,15 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             exp_name += f'_rdd{args.rdd_str}'
         if args.clip_attn_qkv_strategy!='vv':
             exp_name += f'_qkv{args.clip_attn_qkv_strategy}'
+
+        if args.use_blur1:
+            exp_name += f'_blur1'
+            exp_name += f'_sigma{args.recursive_blur_gauSigma}'
+        if args.clipInputEMA:  # darken
+            exp_name += f'_clipInputEMA'
+        if args.post_mode !='':
+            exp_name += f'_post{args.post_mode}'
+
         save_path_dir = f'{parent_dir+exp_name}/'
         printd(f'{exp_name} ({args}')
 
