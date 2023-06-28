@@ -2,7 +2,7 @@
 #$ -cwd
 #$ -j y
 #$ -pe smp 8
-#$ -l h_rt=1:0:0    # 24 hours runtime
+#$ -l h_rt=11:0:0    # 24 hours runtime
 #$ -l h_vmem=11G      # 11G RAM per core
 #$ -l gpu=1     # request 1 GPU
 ##$ -l cluster=andrena # use the Andrena nodes
@@ -11,6 +11,23 @@ module load python
 source ~/pytorchenv1/bin/activate
 
 cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
+
+ # baseline
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk.log 
+
+## 1. mulhead & MaxIOUBoxSAMInput
+# python demo_dataset_.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --multi_head >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk_mulHead.log  #
+# python demo_dataset_.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --multi_head --post_mode='MaxIOUBoxSAMInput' >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk_mulHead_postMaxIOUBoxSAMInput.log  #
+# python demo_dataset_.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --post_mode='MaxIOUBoxSAMInput' >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk_postMaxIOUBoxSAMInput.log  #
+
+
+## 2.COD_GT_woPos_mulWords , COD_woPos
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos_mulWords --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' >> output_log2/COD_GT_woPos_mulWords_thr9e-1_s05_kk.log 
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos_mulWords --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 >> output_log2/COD_GT_woPos_mulWords_thr9e-1_s05_rcur5_kk.log  #2993890
+# python demo_dataset.py --cache_blip_filename COD_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 >> output_log2/COD_woPos_thr9e-1_s05_rcur5_kk.log 
+
+
+# -------------------------------------------------------------------------------
 # python demo.py
 # python demo_dataset.py --cache_blip_filename COD_woPos >> COD_woPos.log
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos >> output_log/COD_GT_woPos.log
@@ -108,8 +125,57 @@ cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.8 --down_sample=0.5
 
 
-# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --pt_topk 1 --clip_attn_qkv_strategy='kk' --test
-python demo_dataset_analysis.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --pt_topk 1  --clip_attn_qkv_strategy='kk' --test 
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3 --clip_attn_qkv_strategy='kk' --test >>output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_kk_blur.log
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=0.5 --test >>output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_kk_blur_sigma0.5.log
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=5 --test >>output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_kk_blur_sigma5.log
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=1 --test >>output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma1.log
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=5 --test >>output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma5.log
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=0.5 --test >>output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma0.5.log
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 2  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=0.5 --test >>output_log_test/COD_GT_woPos_thr9e-1_s05_rcur2_coef_kk_blur_sigma0.5.log
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 1  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=0.5 --test >>output_log_test/COD_GT_woPos_thr9e-1_s05_rcur1_coef_kk_blur_sigma0.5.log
+
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=5 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma5_inflate.log
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=1 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma1_inflate.log
+
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=5 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma5_inflateK20.log
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=1 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma1_inflateK20.log
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=5 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma5_inflateK10.log
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=1 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma1_inflateK10.log
+
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=5 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma5_inflateK20.log
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=5 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma5_inflateK20_mask.log
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=5 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma5_inflateK40_mask.log
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=5 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma5_inflateK40_mask_originImg_.log
+
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk' --recursive_blur_gauSigma=5 --test >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma5_inflateK40_mask_originImg_.log
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3  --recursive_coef=1 --clip_attn_qkv_strategy='kk'  --test  --use_blur --use_dilation \
+# --recursive_blur_gauSigma=5 \
+# --dilation_k=20 \
+# --use_fuse_mask_hm \
+# --use_origin_img \
+#  >> output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_coef_kk_blur_sigma5_inflateK20_mask_originImg.log
+
+
+
+
+
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 3 --clip_attn_qkv_strategy='kk' --test >>output_log_test/COD_GT_woPos_thr9e-1_s05_rcur3_kk_blur.log
+# python demo_dataset_analysis.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --recursive 1  --clip_attn_qkv_strategy='kk' --test 
+# python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --test
+# python demo_dataset_analysis.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --test 
 
 
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=3 >> output_log/COD_GT_woPos_thr9e-1_s05_rcur3_kk_add0.1.log 
