@@ -63,21 +63,20 @@ def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, confi
 
     return mask, mask_logit, points, labels, num, vis_dict
 
-# def get_mask(pil_img, text, sam_predictor, clip_model, args, device):
 
-    
-#     with torch.no_grad():
-#         # get heatmap
-#         sm_mean, sm, vis_map_img, vis_input_img, original_sm_norm = get_heatmap(pil_img, text, clip_model, args, device)
+def fuse_mask(mask_logit_origin_l, sam_thr, fuse='avg'):
 
+    num_mask = len(mask_logit_origin_l)
+    if fuse=='avg':  
+        mask_logit_origin = sum(mask_logit_origin_l)/num_mask  # 
+        mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy()
+        mask = mask_logit_origin > sam_thr
 
+    mask = mask.astype('uint8')
+    mask_logit *= 255
+    mask_logit = mask_logit.astype('uint8')
 
-#     vis_dict = {'vis_map_img': vis_map_img,
-#                 'vis_input_img': vis_input_img, 
-#                 'vis_radius': vis_radius,
-#                 'original_sm_norm': original_sm_norm}
-        
-#     return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
+    return mask, mask_logit
 
 def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
     
@@ -89,6 +88,7 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
 
     vis_mask_l = []
     vis_mask_logit_l = []
+    mask_logit_origin_l = []
     vis_radius_l = []
     points_l = []
     labels_l = []
@@ -347,6 +347,7 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
 
 
             mask_logit_origin = mask_logit_origin[np.argmax(scores)]
+            mask_logit_origin_l.append(mask_logit_origin)
             mask = mask_logit_origin > sam_predictor.model.mask_threshold
             mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy() 
 
@@ -409,7 +410,8 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
                 'points_l': points_l,
                 'labels_l': labels_l,
                 'num_l': num_l,
-                'vis_mask0_l': vis_mask0_l}
+                'vis_mask0_l': vis_mask0_l,
+                'mask_logit_origin_l': mask_logit_origin_l,}
         
     return vis_mask_l[-1], vis_mask_logit_l[-1], mask_logit_origin, points_l[-1], labels_l[-1], num_l[-1], vis_dict
     return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict

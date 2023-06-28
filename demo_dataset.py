@@ -11,7 +11,7 @@ import yaml
 import datasets
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from utils_model import get_text_from_img, get_mask, get_fused_mask, printd, reset_params, get_dir_from_args
+from utils_model import get_text_from_img, get_mask, get_fused_mask, printd, reset_params, get_dir_from_args, fuse_mask
 import os
 
 def mkdir(path):
@@ -124,6 +124,10 @@ val_metric1 = [utils.Averager() for i in range(args.recursive+1)]
 val_metric2 = [utils.Averager() for i in range(args.recursive+1)]
 val_metric3 = [utils.Averager() for i in range(args.recursive+1)]
 val_metric4 = [utils.Averager() for i in range(args.recursive+1)]
+val_metric_acc1 = [utils.Averager() for i in range(args.recursive+1)]
+val_metric_acc2 = [utils.Averager() for i in range(args.recursive+1)]
+val_metric_acc3 = [utils.Averager() for i in range(args.recursive+1)]
+val_metric_acc4 = [utils.Averager() for i in range(args.recursive+1)]
 
 
 ## run model
@@ -135,21 +139,19 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
     else:
         text = get_text_from_img(img_path, pil_img, BLIP_dict, BLIP_model, BLIP_vis_processors, device)
     
-
     if args.multi_mask_fusion:
         mask, mask_logit, points, labels, num, vis_dict = get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config)
     else:
         mask, mask_logit, _, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device)
-        vis_map_img = vis_dict['vis_map_img']
-        vis_input_img = vis_dict['vis_input_img']
-        vis_radius = vis_dict['vis_radius']
-        vis_mask_l = vis_dict['vis_mask_l']
-        vis_mask_logit_l = vis_dict['vis_mask_logit_l']
-        vis_radius_l = vis_dict['vis_radius_l']
-        points_l = vis_dict['points_l']
-        labels_l = vis_dict['labels_l']
         num_l = vis_dict['num_l']
-        vis_clip_sm_img = vis_dict['vis_clip_sm_img']
+        mask_logit_origin_l = vis_dict['mask_logit_origin_l']
+        # fuse masks from different iterations
+        vis_mask_acc_l = []
+        vis_mask_logit_acc_l = []
+        for i in range(args.recursive+1):
+            mask_acc, mask_logit_acc = fuse_mask(mask_logit_origin_l[:i+1], sam_predictor.model.mask_threshold)
+            vis_mask_acc_l.append(mask_acc)
+            vis_mask_logit_acc_l.append(mask_logit_acc)
 
     ## metric
     # align size of GT mask first
@@ -165,7 +167,6 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         vis_tensor = Image.fromarray(vis_mask_l[i])
         vis_tensor = mask_transform(vis_tensor)[0].view(1, 1, inp_size, inp_size)
         result1, result2, result3, result4 = metric_fn(vis_tensor, tensor_gt)
-        
         print(f'{result1:.3f} {result2:.3f} {result3:.3f} {result4:.3f} num of points: {num_l[i]}')
         val_metric1[i].add(result1.item(), tensor_gt.shape[0])
         val_metric2[i].add(result2.item(), tensor_gt.shape[0])
@@ -173,8 +174,27 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         val_metric4[i].add(result4.item(), tensor_gt.shape[0])
 
 
+        vis_tensor = Image.fromarray(vis_mask_acc_l[i])
+        vis_tensor = mask_transform(vis_tensor)[0].view(1, 1, inp_size, inp_size)
+        result1, result2, result3, result4 = metric_fn(vis_tensor, tensor_gt)
+        print(f'{result1:.3f} {result2:.3f} {result3:.3f} {result4:.3f} ')
+        val_metric_acc1[i].add(result1.item(), tensor_gt.shape[0])
+        val_metric_acc2[i].add(result2.item(), tensor_gt.shape[0])
+        val_metric_acc3[i].add(result3.item(), tensor_gt.shape[0])
+        val_metric_acc4[i].add(result4.item(), tensor_gt.shape[0])
+
+
     ## visualization
     if s_i%1==0 and s_i<10:
+        vis_map_img = vis_dict['vis_map_img']
+        vis_input_img = vis_dict['vis_input_img']
+        vis_radius = vis_dict['vis_radius']
+        vis_mask_l = vis_dict['vis_mask_l']
+        vis_mask_logit_l = vis_dict['vis_mask_logit_l']
+        vis_radius_l = vis_dict['vis_radius_l']
+        vis_clip_sm_img = vis_dict['vis_clip_sm_img']
+        points_l = vis_dict['points_l']
+        labels_l = vis_dict['labels_l']
         img_name = img_path.split('/')[-1][:-4]
         vis_pt_l = [np.expand_dims(255*vis_mask_l[i], axis=2).repeat(3, axis=2) for i in range(len(vis_mask_l))]
         if not args.multi_mask_fusion:
@@ -197,6 +217,10 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
                 plt.imsave(save_path_dir + img_name + f'_sam_pt{i}.jpg', vis_pt_l[i])
                 if len(vis_dict['vis_mask0_l'])>i:
                     plt.imsave(save_path_dir + img_name + f'_mask0_{i}.jpg', vis_dict['vis_mask0_l'][i], cmap='gray')
+
+                
+                plt.imsave(save_path_dir + img_name + f'_acc_maskLog{i}.jpg', vis_mask_logit_acc_l[i], cmap='gray')
+                plt.imsave(save_path_dir + img_name + f'_acc_mask{i}.jpg', vis_mask_acc_l[i], cmap='gray')
         
         save_path_sam_pt = save_path_dir + img_name + f"_sam_pt.jpg"
         save_path_sam_pt_logit = save_path_dir + img_name + f"_sam_pt_logit.jpg"
@@ -204,22 +228,16 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         plt.imsave(save_path_sam_pt_logit, mask_logit, cmap='gray')
     # else:
     #     break
-
-        # save_path_sam_pt_logit_img = save_path_dir + img_name + f"_sam_pt_logit_img.jpg"
-        # logit_img = mask_logit/255*vis_input_img[0]
-        # plt.imsave(save_path_sam_pt_logit_img, logit_img.astype('uint8'))
-        # save_path_sam_pt_img = save_path_dir + img_name + f"_sam_pt_img.jpg"
-        # mask_img = vis_pt/255*vis_input_img[0]
-        # plt.imsave(save_path_sam_pt_img, mask_img.astype('uint8'))
-        
-        # save_path_sam = save_path_dir + img_name + f"_sam.jpg"
-        # save_path_gt = save_path_dir + img_name + f"_gt.jpg"
-        # plt.imsave(save_path_sam, vis_tensor.view(1024,1024).numpy(), cmap='gray')
-        # plt.imsave(save_path_gt, tensor_gt.view(1024,1024).numpy(), cmap='gray')
 # print(save_path_dir.split('/')[-2])
 for i in range(args.recursive+1):
     print(val_metric1[i].item(),                
           val_metric2[i].item(),
           val_metric3[i].item(),
           val_metric4[i].item(),)
+for i in range(args.recursive+1):
+    print('\nfuse:\n',
+          val_metric_acc1[i].item(),                
+          val_metric_acc2[i].item(),
+          val_metric_acc3[i].item(),
+          val_metric_acc4[i].item(),)
  
