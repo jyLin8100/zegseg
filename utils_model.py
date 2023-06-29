@@ -154,21 +154,28 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
                 contours, _ = cv2.findContours(mask.copy().astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 bboxes = []
                 overlaps = []
-                for contour in contours:
-                    x, y, w, h = cv2.boundingRect(contour)
-                    bbox = np.array([x, y, x + w, y + h])
-                    bboxes.append(bbox)
-                    overlap = (w * h) / np.sum(mask)
-                    overlaps.append(overlap)
-                bboxes = np.array(bboxes)
-                overlaps = np.array(overlaps)
-                max_overlap_idx = np.argmax(overlaps)
-                max_bbox = bboxes[max_overlap_idx]
-                scaled_bbox = max_bbox.copy()
-                scaled_bbox[:2] -= np.floor((scaled_bbox[2:] - scaled_bbox[:2]) * 0.1).astype(int)
-                scaled_bbox[2:] += np.ceil((scaled_bbox[2:] - scaled_bbox[:2]) * 0.1).astype(int)
-                bboxes[max_overlap_idx] = scaled_bbox
-                bboxes = bboxes[max_overlap_idx]
+                if len(contours)==0:
+                    x_min = 0
+                    x_max = mask_logit_origin[0].shape[1]
+                    y_min = 0
+                    y_max = mask_logit_origin[0].shape[0]
+                    bboxes = np.array([x_min, y_min, x_max, y_max])
+                else:
+                    for contour in contours:
+                        x, y, w, h = cv2.boundingRect(contour)
+                        bbox = np.array([x, y, x + w, y + h])
+                        bboxes.append(bbox)
+                        overlap = (w * h) / np.sum(mask)
+                        overlaps.append(overlap)
+                    bboxes = np.array(bboxes)
+                    overlaps = np.array(overlaps)
+                    max_overlap_idx = np.argmax(overlaps)
+                    max_bbox = bboxes[max_overlap_idx]
+                    scaled_bbox = max_bbox.copy()
+                    scaled_bbox[:2] -= np.floor((scaled_bbox[2:] - scaled_bbox[:2]) * 0.1).astype(int)
+                    scaled_bbox[2:] += np.ceil((scaled_bbox[2:] - scaled_bbox[:2]) * 0.1).astype(int)
+                    bboxes[max_overlap_idx] = scaled_bbox
+                    bboxes = bboxes[max_overlap_idx]
                 bbox_list.append(bboxes)
             else:
                 mask_logit_origin, scores, logits = sam_predictor.predict(point_labels=labels, point_coords=np.array(points), multimask_output=True, return_logits=True,)
