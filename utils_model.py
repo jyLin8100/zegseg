@@ -78,7 +78,7 @@ def fuse_mask(mask_logit_origin_l, sam_thr, fuse='avg'):
 
     return mask, mask_logit
 
-def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
+def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP_model=None, BLIP_vis_processors=None):
     
     vis_input_img = []
     vis_map_img = []  # map applied to img in next iteration
@@ -104,6 +104,10 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda'):
     vis_input_img.append(cur_image.astype('uint8'))
     with torch.no_grad():
         for i in range(args.recursive+1):
+            if i>=1 and args.update_text:
+                cur_image_pil = Image.fromarray(cur_image.astype(np.uint8))
+                text = get_text_from_img('', cur_image_pil, model=BLIP_model, vis_processors=BLIP_vis_processors)
+
             sm, sm_mean, sm_logit = clip_surgery(cur_image, text, clip_model, args, device='cuda')
             if i==0:    original_sm_norm = sm_logit[..., 0]
 
@@ -258,24 +262,24 @@ def clip_surgery(np_img, text, model, args, device='cuda'):
     return sm, sm_mean, sm1
 
 
-def get_text_from_img(img_path, pil_img, BLIP_dict=None, model=None, vis_processors=None, device='cuda'):
+def get_text_from_img(img_path, pil_img, BLIP_dict={}, model=None, vis_processors=None, device='cuda'):
     if BLIP_dict.get(img_path) is not None:
         text = [BLIP_dict[img_path]]
     else:
         # prepare the image
         # model = model.float()
         image = vis_processors["eval"](pil_img).unsqueeze(0).to(device)
-        blip_output2 = model.generate({"image": image, "prompt": "This animal is in the left or in the right or in the middle of the picture? Answer:"})
+        #blip_output2 = model.generate({"image": image, "prompt": "This animal is in the left or in the right or in the middle of the picture? Answer:"})
         # print("blip_output2", blip_output2)
         blip_output = model.generate({"image": image})
         # print(blip_output)
-        # blip_output = blip_output[0].split('-')[0]
+        blip_output = blip_output[0].split('-')[0]
         context = [
-            ("Image caption.",blip_output[0]),
+            ("Image caption",blip_output),
         ]
         template = "Question: {} Answer: {}."
         # question = "Use a word to summary the name of this animal?"
-        question = "Use one single word to summary the name of this animal?"
+        question = "Name of hidden animal in one word"
         prompt = " ".join([template.format(context[i][0], context[i][1]) for i in range(len(context))]) + " Question: " + question + " Answer:"
         blip_output_forsecond = model.generate({"image": image, "prompt": prompt})
         # blip_output_forsecond = blip_output_forsecond[0].split('_')[0]
@@ -289,14 +293,14 @@ def get_text_from_img(img_path, pil_img, BLIP_dict=None, model=None, vis_process
         out_list = []
         blip_output_forsecond = blip_output_forsecond[0].split('-')[0].replace('\'','')
         out_list.append(blip_output_forsecond)
-        out_list.append(blip_output2[0])
+        #out_list.append(blip_output2[0])
         out_list = " ".join(out_list)
         text_list = []
         text_list.append(out_list)
         text = text_list
         # text = ["a leaf"]
-        print(f'out_list:{out_list}\n blip_output:{blip_output}\n blip_output2:{blip_output2}\n blip_output_forsecond:{blip_output_forsecond} (prompt: {prompt})')
-    print('text:', text)
+        # print(f'out_list:{out_list}\n blip_output:{blip_output}\n blip_output_forsecond:{blip_output_forsecond} (prompt: {prompt})')
+    print(text)
     return text
 
 def heatmap2points(sm, sm_mean, np_img, args, attn_thr=-1):

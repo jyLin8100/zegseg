@@ -22,9 +22,11 @@ def mkdir(path):
 ## configs
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', default='configs/mydemo.yaml')
+parser.add_argument('--use_cache_text', type=bool, default=True, help='load text from cache') 
+parser.add_argument('--update_text', action='store_true', help='update text using BLIP for each iteration') 
 parser.add_argument('--multi_mask_fusion', type=bool, default=False, help='fuse multiple masks') 
 parser.add_argument('--multi_mask_fusion_strategy', type=str, default='avg', help='fuse multiple masks')  # avg, entropy, entropy2
-parser.add_argument('--cache_blip_filename', default='COD_GT_woPos') # COD, COD_woPos, COD_GT, COD_GT_woPos, COD_BLIP_GT_woPos
+parser.add_argument('--cache_blip_filename', type=str, default='COD_GT_woPos', help='the filename to load text from cache') # COD, COD_woPos, COD_GT, COD_GT_woPos, COD_BLIP_GT_woPos
 parser.add_argument('--clip_model', type=str, default='CS-ViT-B/16', help='model for clip surgery') 
 parser.add_argument('--sam_checkpoint', type=str, default='sam_vit_h_4b8939.pth', help='') 
 parser.add_argument('--sam_model_type', type=str, default='vit_h', help='') 
@@ -50,30 +52,14 @@ parser.add_argument('--test_vis_dir', type=str, default='', )  # store output in
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 args = parser.parse_args()
+print(args)
 with open(args.config, 'r') as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 spec = config['test_dataset']
-dataset_name = spec['dataset']['args']['root_path_1'].split('/')[2]
-if args.cache_blip_filename is not None:
-    cache_blip_filename = f'blip_cache/{args.cache_blip_filename}'
-else:
-    cache_blip_filename = f'blip_cache/{dataset_name}'
-blip_text_l = []
-if os.path.exists(cache_blip_filename):
-    cache_blip_file = open(cache_blip_filename, "r")
-    for text in cache_blip_file:
-        blip_text_l.append(text[:-1].split(','))
-    printd(f"loading BLIP text output from file: {cache_blip_filename}, length:{len(blip_text_l)}")
 
-parent_dir = f'output_img/{cache_blip_filename}/'
-if args.test:   parent_dir = f'output_img_test/{cache_blip_filename}_{args.test_vis_dir}/'
-save_path_dir = get_dir_from_args(args, config, parent_dir)
-
-
-mkdir(save_path_dir)
-printd(f'save_path_dir: {save_path_dir}')
 
 ## get data
+dataset_name = spec['dataset']['args']['root_path_1'].split('/')[2]
 printd(f'loading dataset...')
 dataset = datasets.make(spec['dataset'])
 dataset = datasets.make(spec['wrapper'], args={'dataset': dataset})
@@ -82,8 +68,34 @@ loader = DataLoader(dataset, batch_size=spec['batch_size'],
 paths_img = dataset.dataset.paths_img
 data_len = len(paths_img)
 printd(f"dataset size:\t {len(paths_img)}")
-if len(blip_text_l)>0:
-    assert data_len==len(blip_text_l)
+# args.use_cache_text=False
+
+## get blip text
+if args.use_cache_text:
+    text_filename = f'blip_cache/{args.cache_blip_filename}'
+    blip_text_l = []
+    if os.path.exists(text_filename):
+        cache_blip_file = open(text_filename, "r")
+        for text in cache_blip_file:
+            blip_text_l.append(text[:-1].split(','))
+        printd(f"loading BLIP text output from file: {text_filename}, length:{len(blip_text_l)}")
+    if len(blip_text_l)>0:
+        assert data_len==len(blip_text_l)
+
+
+## save dir
+if args.use_cache_text:
+    text_filename = f'blip_cache/{args.cache_blip_filename}'
+else:
+    text_filename = 'blipText'
+    if args.update_text:
+        text_filename = 'blipTextUpdate'
+parent_dir = f'output_img/{text_filename}/'
+if args.test:   parent_dir = f'output_img_test/{text_filename}_{args.test_vis_dir}/'
+save_path_dir = get_dir_from_args(args, config, parent_dir)
+mkdir(save_path_dir)
+printd(f'save_path_dir: {save_path_dir}')
+
 
 ## load model  
 from segment_anything import sam_model_registry, SamPredictor
@@ -95,9 +107,8 @@ sam_predictor = SamPredictor(sam)
 clip_params={ 'attn_qkv_strategy':args.clip_attn_qkv_strategy}
 clip_model, _ = clip.load(args.clip_model, device=device, params=clip_params)
 clip_model.eval()
-use_cache_blip = True
-if len(blip_text_l)==0:
-    use_cache_blip = False
+
+if not args.use_cache_text or (args.use_cache_text and args.update_text):
     from lavis.models import load_model_and_preprocess
     # blip_model_type="pretrain_opt2.7b"
     blip_model_type="pretrain_opt6.7b" 
@@ -123,7 +134,7 @@ val_metric_acc4 = [utils.Averager() for i in range(args.recursive+1)]
 for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
 
     pil_img = Image.open(img_path).convert("RGB")
-    if use_cache_blip:
+    if args.use_cache_text:
         text = blip_text_l[s_i] 
     else:
         text = get_text_from_img(img_path, pil_img, BLIP_dict, BLIP_model, BLIP_vis_processors, device)
@@ -131,12 +142,13 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
     if args.multi_mask_fusion:
         mask, mask_logit, points, labels, num, vis_dict = get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config)
     else:
-        mask, mask_logit, _, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device)
+        mask, mask_logit, _, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device, BLIP_model, BLIP_vis_processors,)
         num_l = vis_dict['num_l']
         mask_logit_origin_l = vis_dict['mask_logit_origin_l']
         # fuse masks from different iterations
         vis_mask_acc_l = []
         vis_mask_logit_acc_l = []
+        vis_mask_l = vis_dict['vis_mask_l']
         for i in range(args.recursive+1):
             mask_acc, mask_logit_acc = fuse_mask(mask_logit_origin_l[:i+1], sam_predictor.model.mask_threshold)
             vis_mask_acc_l.append(mask_acc)
@@ -178,7 +190,6 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         vis_map_img = vis_dict['vis_map_img']
         vis_input_img = vis_dict['vis_input_img']
         vis_radius = vis_dict['vis_radius']
-        vis_mask_l = vis_dict['vis_mask_l']
         vis_mask_logit_l = vis_dict['vis_mask_logit_l']
         vis_radius_l = vis_dict['vis_radius_l']
         vis_clip_sm_img = vis_dict['vis_clip_sm_img']
@@ -215,9 +226,10 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         save_path_sam_pt_logit = save_path_dir + img_name + f"_sam_pt_logit.jpg"
         plt.imsave(save_path_sam_pt, vis_pt_l[-1])
         plt.imsave(save_path_sam_pt_logit, mask_logit, cmap='gray')
-    # else:
-    #     break
+#     else:
+#         break
 # print(save_path_dir.split('/')[-2])
+
 for i in range(args.recursive+1):
     print(val_metric1[i].item(),                
           val_metric2[i].item(),
