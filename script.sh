@@ -2,7 +2,7 @@
 #$ -cwd
 #$ -j y
 #$ -pe smp 8
-#$ -l h_rt=1:0:0    # 24 hours runtime
+#$ -l h_rt=11:0:0    # 24 hours runtime
 #$ -l h_vmem=11G      # 11G RAM per core
 #$ -l gpu=1     # request 1 GPU
 ##$ -l cluster=andrena # use the Andrena nodes
@@ -15,17 +15,9 @@ cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
   # baseline
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk.log 
 
-python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5
+# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5
 
-## 3. iterative update blip (6-28)
-# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --post_mode='MaxIOUBoxSAMInput' >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk_MaxIOUBoxSAMInput.log 
-# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk.log 
 
-# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk_clipInputEMA.log 
-# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA   --post_mode='MaxIOUBoxSAMInput' >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
-
-# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5 >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5.log 
-# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5  --post_mode='MaxIOUBoxSAMInput'>> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5_MaxIOUBoxSAMInput.log 
 
 ## 1. mulhead & MaxIOUBoxSAMInput
 # python demo_dataset_.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --multi_head >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk_mulHead.log  #
@@ -37,6 +29,31 @@ python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos_mulWords --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' >> output_log2/COD_GT_woPos_mulWords_thr9e-1_s05_kk.log 
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos_mulWords --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 >> output_log2/COD_GT_woPos_mulWords_thr9e-1_s05_rcur5_kk.log  #2993890
 # python demo_dataset.py --cache_blip_filename COD_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 >> output_log2/COD_woPos_thr9e-1_s05_rcur5_kk.log 
+
+## 3. iterative update blip (6-28)
+# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --post_mode='MaxIOUBoxSAMInput' >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk.log 
+# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk_clipInputEMA.log 
+# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA   --post_mode='MaxIOUBoxSAMInput' >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5 >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5.log 
+# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5  --post_mode='MaxIOUBoxSAMInput'>> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5_MaxIOUBoxSAMInput.log 
+
+# python demo_dataset.py   --use_cache_text ''  --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  >> output_log2/BlipText_thr9e-1_s05_rcur5_kk.log 
+# python demo_dataset.py   --use_cache_text ''  --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --post_mode='MaxIOUBoxSAMInput' >> output_log2/BlipText_thr9e-1_s05_rcur5_kk_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py   --use_cache_text ''  --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA >> output_log2/BlipText_thr9e-1_s05_rcur5_kk_clipInputEMA.log 
+# python demo_dataset.py   --use_cache_text ''  --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA   --post_mode='MaxIOUBoxSAMInput' >> output_log2/BlipText_thr9e-1_s05_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py   --use_cache_text ''  --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5 >> output_log2/BlipText_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5.log 
+# python demo_dataset.py   --use_cache_text ''  --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5  --post_mode='MaxIOUBoxSAMInput'>> output_log2/BlipText_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5_MaxIOUBoxSAMInput.log 
+
+# python demo_dataset.py    --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA   --post_mode='MaxIOUBoxSAMInput' >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py    --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5  --post_mode='MaxIOUBoxSAMInput'>> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5_MaxIOUBoxSAMInput.log 
+
+
+
+
+
+
+
 
 
 # -------------------------------------------------------------------------------
