@@ -137,12 +137,16 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
     if args.use_cache_text:
         text = blip_text_l[s_i] 
     else:
-        text = get_text_from_img(img_path, pil_img, BLIP_dict, BLIP_model, BLIP_vis_processors, device)
-    
+        text = get_text_from_img('', pil_img, model=BLIP_model, vis_processors=BLIP_vis_processors)
+        
     if args.multi_mask_fusion:
         mask, mask_logit, points, labels, num, vis_dict = get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config)
     else:
-        mask, mask_logit, _, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device, BLIP_model, BLIP_vis_processors,)
+        if args.update_text:
+            mask, mask_logit, _, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device, BLIP_model, BLIP_vis_processors,)
+        else:
+            mask, mask_logit, _, points, labels, num, vis_dict = get_mask(pil_img, text, sam_predictor, clip_model, args, device, )
+        
         num_l = vis_dict['num_l']
         mask_logit_origin_l = vis_dict['mask_logit_origin_l']
         # fuse masks from different iterations
