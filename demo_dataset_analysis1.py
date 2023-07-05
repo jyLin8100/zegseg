@@ -91,7 +91,7 @@ else:
     text_filename = 'blipText'
     if args.update_text:
         text_filename = 'blipTextUpdate'
-parent_dir = f'output_img/{text_filename}/'
+parent_dir = f'output_img_analysis1/TTTTFF_{text_filename}/'
 if args.test:   parent_dir = f'output_img_test/{text_filename}_{args.test_vis_dir}/'
 save_path_dir = get_dir_from_args(args, config, parent_dir)
 mkdir(save_path_dir)
@@ -130,9 +130,19 @@ val_metric_acc2 = [utils.Averager() for i in range(args.recursive+1)]
 val_metric_acc3 = [utils.Averager() for i in range(args.recursive+1)]
 val_metric_acc4 = [utils.Averager() for i in range(args.recursive+1)]
 
+debug_samples=[54,  198, 199, 267, 345, 362, 425, 430, 487, 786, 854, 950, 1052, 1084, 1241, 1270, 1287, 1380, 1641, 1723, 1772, 1848, 1877, 1901, 1930, 1948,] # TTTTTF
 
+debug_samples=[ 59, 136, 201, 212, 291, 297, 326, 533, 545, 608, 633, 675, 720, 937, 1391, 1431, 1545, 1548, 1604, 1727, 1737, 1770, 1950, 1963,] # TTTTFF
+    
 ## run model
 for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
+    flag = 0 
+    if len(debug_samples)>0:  # visualize certain samples
+        for dsam_i in range(len(debug_samples)):
+            if debug_samples[dsam_i] == s_i:
+                flag=dsam_i+1
+                break
+    if flag==0: continue
 
     pil_img = Image.open(img_path).convert("RGB")
     if args.use_cache_text:
@@ -191,7 +201,7 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
 
 
     ## visualization
-    if s_i%1==0 and s_i<10:
+    if 1: #s_i%1==0 and s_i<10:
         vis_map_img = vis_dict['vis_map_img']
         vis_input_img = vis_dict['vis_input_img']
         vis_radius = vis_dict['vis_radius']
@@ -200,7 +210,8 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         vis_clip_sm_img = vis_dict['vis_clip_sm_img']
         points_l = vis_dict['points_l']
         labels_l = vis_dict['labels_l']
-        img_name = img_path.split('/')[-1][:-4]
+        # img_name = img_path.split('/')[-1][:-4]
+        img_name = img_path.split('/')[-1][:-4].replace('COD10K-CAM-','')
         vis_pt_l = [np.expand_dims(255*vis_mask_l[i], axis=2).repeat(3, axis=2) for i in range(len(vis_mask_l))]
         if not args.multi_mask_fusion:
             for j in range(len(points_l)):
@@ -217,8 +228,8 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
             for i in range(len(vis_map_img)):
                 plt.imsave(save_path_dir + img_name + f'_iptImg{i}.jpg', vis_input_img[i])
                 plt.imsave(save_path_dir + img_name + f'_meanSm{i}.jpg', vis_clip_sm_img[i])
-                plt.imsave(save_path_dir + img_name + f'_maskLog{i}.jpg', vis_mask_logit_l[i], cmap='gray')
-                plt.imsave(save_path_dir + img_name + f'_fuseSm{i}.jpg', vis_map_img[i])
+                # plt.imsave(save_path_dir + img_name + f'_maskLog{i}.jpg', vis_mask_logit_l[i], cmap='gray')
+                # plt.imsave(save_path_dir + img_name + f'_fuseSm{i}.jpg', vis_map_img[i])
                 plt.imsave(save_path_dir + img_name + f'_sam_pt{i}.jpg', vis_pt_l[i])
                 if len(vis_dict['vis_mask0_l'])>i:
                     plt.imsave(save_path_dir + img_name + f'_mask0_{i}.jpg', vis_dict['vis_mask0_l'][i], cmap='gray')

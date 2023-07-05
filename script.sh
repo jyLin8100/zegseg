@@ -2,7 +2,7 @@
 #$ -cwd
 #$ -j y
 #$ -pe smp 8
-#$ -l h_rt=11:0:0    # 24 hours runtime
+#$ -l h_rt=1:0:0    # 24 hours runtime
 #$ -l h_vmem=11G      # 11G RAM per core
 #$ -l gpu=1     # request 1 GPU
 ##$ -l cluster=andrena # use the Andrena nodes
@@ -12,11 +12,20 @@ source ~/pytorchenv1/bin/activate
 
 cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
 
+python demo_dataset_analysis1.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA --post_mode='MaxIOUBoxSAMInput' 
+# python demo_dataset_analysis1.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=10 --clipInputEMA #--post_mode='MaxIOUBoxSAMInput' 
+# python demo_dataset_analysis1.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=10 --clipInputEMA --post_mode='MaxIOUBoxSAMInput' 
+
   # baseline
 # python demo_dataset.py --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk.log 
 
 # python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5
 
+## 4. fuse mask
+# python demo_dataset.py    --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA   --post_mode='MaxIOUBoxSAMInput'  --use_fuse_mask_hm  >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput_mask.log 
+# python demo_dataset.py    --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5  --post_mode='MaxIOUBoxSAMInput'  --use_fuse_mask_hm  >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5_MaxIOUBoxSAMInput_mask.log 
+# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA   --post_mode='MaxIOUBoxSAMInput'  --use_fuse_mask_hm >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput_mask.log 
+# python demo_dataset.py   --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5  --post_mode='MaxIOUBoxSAMInput'  --use_fuse_mask_hm>> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5_MaxIOUBoxSAMInput_mask.log 
 
 
 ## 1. mulhead & MaxIOUBoxSAMInput
@@ -48,10 +57,25 @@ cd /data/DERI-Gong/jl010/Seg/zero-shot-hard-sample-segemetation
 # python demo_dataset.py    --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA   --post_mode='MaxIOUBoxSAMInput' >> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
 # python demo_dataset.py    --cache_blip_filename COD_GT_woPos --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5  --post_mode='MaxIOUBoxSAMInput'>> output_log2/COD_GT_woPos_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5_MaxIOUBoxSAMInput.log 
 
+## 调参 recursive_coef, down_sample, recursive, post_mode
+# baseline: python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA --post_mode='MaxIOUBoxSAMInput' >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA --post_mode='MaxIOUBoxSAMInput' --recursive_coef=0.4 >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_0.4_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA --post_mode='MaxIOUBoxSAMInput' --recursive_coef=0.2 >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_0.2_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --recursive=5 --clipInputEMA --post_mode='MaxIOUBoxSAMInput' --recursive_coef=0.3 >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_0.4_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=1 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA --post_mode='MaxIOUBoxSAMInput'  >> output_log2/BlipTextUpdate_thr9e-1_s1_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.25 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA --post_mode='MaxIOUBoxSAMInput'  >> output_log2/BlipTextUpdate_thr9e-1_s025_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.95 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA --post_mode='MaxIOUBoxSAMInput' >> output_log2/BlipText_thr95e-1_s05_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.85 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA --post_mode='MaxIOUBoxSAMInput' >> output_log2/BlipText_thr85e-1_s05_rcur5_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA --post_mode='PostBox' >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk_clipInputEMA_PostBox.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5 --clipInputEMA --post_mode='PostLogit' >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_kk_clipInputEMA_PostLogit.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=10 --clipInputEMA --post_mode='MaxIOUBoxSAMInput' >> output_log2/BlipTextUpdate_thr9e-1_s05_rcur10_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=10 --clipInputEMA --post_mode='MaxIOUBoxSAMInput'  --recursive_coef=0.2 >> output_log2/BlipTextUpdate_thr9e-1_s05_0.2_rcur10_kk_clipInputEMA_MaxIOUBoxSAMInput.log 
 
-
-
-
+# baseline: python demo_dataset.py --use_cache_text '' --update_text --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.5  --post_mode='MaxIOUBoxSAMInput'>> output_log2/BlipTextUpdate_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text ''  --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=3 --recursive_coef=0.5  --post_mode='MaxIOUBoxSAMInput'>> output_log2/BlipText_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text ''  --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=7 --recursive_coef=0.5  --post_mode='MaxIOUBoxSAMInput'>> output_log2/BlipText_thr9e-1_s05_rcur5_0.5_kk_blur1_sigma5_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text ''  --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --recursive_coef=0.7  --post_mode='MaxIOUBoxSAMInput'>> output_log2/BlipText_thr9e-1_s05_rcur5_0.7_kk_blur1_sigma5_MaxIOUBoxSAMInput.log 
+# python demo_dataset.py --use_cache_text ''  --attn_thr 0.9 --down_sample=0.5 --clip_attn_qkv_strategy='kk' --recursive=5  --use_blur1 --recursive_blur_gauSigma=5 --post_mode='MaxIOUBoxSAMInput'>> output_log2/BlipText_thr9e-1_s05_rcur5_kk_blur1_sigma5_MaxIOUBoxSAMInput.log 
 
 
 

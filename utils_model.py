@@ -132,17 +132,18 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
                 best_idx = np.argmax(scores)
                 mask = mask_logit_origin[best_idx] > sam_predictor.model.mask_threshold
                 y, x = np.nonzero(mask)
-                x_min = x.min()
-                x_max = x.max()
-                y_min = y.min()
-                y_max = y.max()
-                input_box = np.array([x_min, y_min, x_max, y_max])
-                mask_logit_origin, scores, logits,  = sam_predictor.predict(
-                    point_coords=np.array(points),
-                    point_labels=labels,
-                    box=input_box[None, :],
-                    multimask_output=True,
-                    return_logits=True)
+                if len(x)!=0:
+                    x_min = x.min() 
+                    x_max = x.max() 
+                    y_min = y.min()
+                    y_max = y.max()
+                    input_box = np.array([x_min, y_min, x_max, y_max])
+                    mask_logit_origin, scores, logits,  = sam_predictor.predict(
+                        point_coords=np.array(points),
+                        point_labels=labels,
+                        box=input_box[None, :],
+                        multimask_output=True,
+                        return_logits=True)
             # 7. use max iou box from last mask
             elif args.post_mode =='MaxIOUBoxSAMInput':
                 if i==0:
@@ -188,6 +189,12 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
 
             # update input image for next iter
             sm1 = sm_logit
+            if args.use_fuse_mask_hm:
+                mask_logit1 = mask_logit
+                # mask_logit1[mask_logit1<0.5] = 0
+                mask_logit1 = np.expand_dims(mask_logit1, axis=2)
+                sm1 = np.clip(  mask_logit1 + sm1, 0, 1)
+                
             if args.use_blur1:  # EMA blur
                 cur_image_bg = np.clip(gaussian_filter(ori_image, sigma=args.recursive_blur_gauSigma),0,255) * (1-sm1)
                 cur_image_fg = ori_image * sm1
@@ -306,7 +313,7 @@ def get_text_from_img(img_path, pil_img, BLIP_dict={}, model=None, vis_processor
         text_list.append(out_list)
         text = text_list
         # text = ["a leaf"]
-        # print(f'out_list:{out_list}\n blip_output:{blip_output}\n blip_output_forsecond:{blip_output_forsecond} (prompt: {prompt})')
+        print(f'out_list:{out_list}\n blip_output:{blip_output}\n blip_output_forsecond:{blip_output_forsecond} (prompt: {prompt})')
     print(text)
     return text
 
@@ -402,6 +409,8 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             exp_name += f'_sigma{args.recursive_blur_gauSigma}'
         if args.clipInputEMA:  # darken
             exp_name += f'_clipInputEMA'
+        if args.use_fuse_mask_hm:
+            exp_name += f'_fuseMask'
         if args.post_mode !='':
             exp_name += f'_post{args.post_mode}'
 
