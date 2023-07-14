@@ -24,6 +24,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--config', default='configs/mydemo.yaml')
 parser.add_argument('--use_cache_text', type=bool, default=True, help='load text from cache') 
 parser.add_argument('--update_text', action='store_true', help='update text using BLIP for each iteration') 
+parser.add_argument('--prompt_q', type=str, default=None)
 parser.add_argument('--multi_mask_fusion', type=bool, default=False, help='fuse multiple masks') 
 parser.add_argument('--multi_mask_fusion_strategy', type=str, default='avg', help='fuse multiple masks')  # avg, entropy, entropy2
 parser.add_argument('--cache_blip_filename', type=str, default='COD_GT_woPos', help='the filename to load text from cache') # COD, COD_woPos, COD_GT, COD_GT_woPos, COD_BLIP_GT_woPos
@@ -138,7 +139,7 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
     if args.use_cache_text:
         text = blip_text_l[s_i] 
     else:
-        text = get_text_from_img('', pil_img, model=BLIP_model, vis_processors=BLIP_vis_processors)
+        text = get_text_from_img('', pil_img, model=BLIP_model, vis_processors=BLIP_vis_processors, question=args.prompt_q)
         
     if args.multi_mask_fusion:
         mask, mask_logit, points, labels, num, vis_dict = get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config)
@@ -205,6 +206,7 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
                     idxTop==idxMaskSim,
                     idxTop==idxMaskLgtSim,
                     )
+
 
     ## visualization
     if s_i%1==0 and s_i<10:
