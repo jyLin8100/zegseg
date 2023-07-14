@@ -305,7 +305,7 @@ def get_text_from_img(img_path, pil_img, BLIP_dict={}, model=None, vis_processor
         ]
         template = "Question: {}. Answer: {}."
         
-        question_l = ["Name of hidden animal in one word"] if prompt_q is None else prompt_q_dict[prompt_q]
+        question_l = ["Name of hidden animal in one word."] if prompt_q is None else prompt_q_dict[prompt_q]
         text_list = []
         for question in question_l:
             prompt = " ".join([template.format(context[i][0], context[i][1]) for i in range(len(context))]) + " Question: " + question + " Answer:"

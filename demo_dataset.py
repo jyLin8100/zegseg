@@ -139,7 +139,7 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
     if args.use_cache_text:
         text = blip_text_l[s_i] 
     else:
-        text = get_text_from_img('', pil_img, model=BLIP_model, vis_processors=BLIP_vis_processors, question=args.prompt_q)
+        text = get_text_from_img('', pil_img, model=BLIP_model, vis_processors=BLIP_vis_processors, prompt_q=args.prompt_q)
         
     if args.multi_mask_fusion:
         mask, mask_logit, points, labels, num, vis_dict = get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config)
@@ -249,8 +249,8 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         # save_path_sam_pt_logit = save_path_dir + img_name + f"_sam_pt_logit.jpg"
         # plt.imsave(save_path_sam_pt, vis_pt_l[-1])
         # plt.imsave(save_path_sam_pt_logit, mask_logit, cmap='gray')
-#     else:
-#         break
+    # else:
+    #     break
 # print(save_path_dir.split('/')[-2])
 
 for i in range(args.recursive+1):
