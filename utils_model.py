@@ -111,7 +111,7 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
         for i in range(args.recursive+1):
             if i>=1 and args.update_text:
                 cur_image_pil = Image.fromarray(cur_image.astype(np.uint8))
-                text = get_text_from_img('', cur_image_pil, model=BLIP_model, vis_processors=BLIP_vis_processors, question_l=args.prompt_q)
+                text = get_text_from_img('', cur_image_pil, model=BLIP_model, vis_processors=BLIP_vis_processors, prompt_q=args.prompt_q)
 
             sm, sm_mean, sm_logit = clip_surgery(cur_image, text, clip_model, args, device='cuda')
             if i==0:    original_sm_norm = sm_logit[..., 0]
@@ -287,7 +287,13 @@ def clip_surgery(np_img, text, model, args, device='cuda'):
     return sm, sm_mean, sm1
 
 
-def get_text_from_img(img_path, pil_img, BLIP_dict={}, model=None, vis_processors=None, device='cuda', question_l=None, answer_l=None):
+prompt_q_dict={
+    '3attriThe': ["Name of the hidden animal in one word.", "Name of the concealed animal in one word.", "Name of the camouflage animal in one word.", ]
+}
+prompt_ans_dict={
+    '3attriThe': ["the hidden animal", "the concealed animal", "the camouflage animal"]
+}
+def get_text_from_img(img_path, pil_img, BLIP_dict={}, model=None, vis_processors=None, device='cuda', prompt_q=None):
     if BLIP_dict.get(img_path) is not None:
         text = [BLIP_dict[img_path]]
     else:
@@ -298,8 +304,8 @@ def get_text_from_img(img_path, pil_img, BLIP_dict={}, model=None, vis_processor
             ("Image caption",blip_output),
         ]
         template = "Question: {}. Answer: {}."
-        if question_l is None:
-            question_l = ["Name of the hidden animal in one word.", "Name of the concealed animal in one word.", "Name of the camouflage animal in one word.", ]
+        
+        question_l = ["Name of hidden animal in one word"] if prompt_q is None else prompt_q_dict[prompt_q]
         text_list = []
         for question in question_l:
             prompt = " ".join([template.format(context[i][0], context[i][1]) for i in range(len(context))]) + " Question: " + question + " Answer:"
@@ -314,7 +320,7 @@ def get_text_from_img(img_path, pil_img, BLIP_dict={}, model=None, vis_processor
             print(f'prompt: {prompt}')
         text = text_list
         if len(text)==0:
-            text = ["the hidden animal", "the concealed animal", "the camouflage animal"] if answer_l is None else answer_l
+            text = [''] if prompt_q is None else prompt_ans_dict[prompt_q]
         
     print(text)
     return text
@@ -421,7 +427,7 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
         if args.post_mode !='':
             exp_name += f'_post{args.post_mode}'
         if args.prompt_q!='Name of hidden animal in one word':
-            exp_name += f'_prompt_q{args.prompt_q[:5]}{len(args.prompt_q)}'
+            exp_name += f'_prompt_q{args.prompt_q}'
 
 
         save_path_dir = f'{parent_dir+exp_name}/'
