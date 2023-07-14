@@ -85,14 +85,19 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
     vis_clip_sm_img = []  # heatmap from clip surgery
     sm_l = []
     sm_mean_l = []
+    sm_logit_l = []
 
     vis_mask_l = []
     vis_mask_logit_l = []
-    mask_logit_origin_l = []
     vis_radius_l = []
     points_l = []
     labels_l = []
     num_l = []
+
+    mask_logit_origin_l = []
+    mask_logit_l = []
+    mask_l = []
+
     vis_mask0_l = []  # mask before post refine. 
     bbox_list = []  # for port_mode =='MaxIOUBoxSAMInput':
 
@@ -211,6 +216,7 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
             vis_map_img.append((255*sm1[...,0]).astype('uint8'))
             sm_l.append(sm)
             sm_mean_l.append(sm_mean)
+            sm_logit_l.append(sm_logit)
 
             vis_mask_l.append(mask.astype('uint8'))
             vis_mask_logit_l.append((mask_logit * 255).astype('uint8'))
@@ -219,26 +225,33 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
             labels_l.append(labels)
             num_l.append(num)
 
+            mask_l.append(mask)
+            mask_logit_l.append(mask_logit)
+
 
 
         vis_dict = {'vis_map_img': vis_map_img,
-                'vis_clip_sm_img': vis_clip_sm_img,
+                    'vis_clip_sm_img': vis_clip_sm_img,
+                    'vis_input_img': vis_input_img,
                 'vis_input_img': vis_input_img, 
-                'vis_radius': vis_radius_l[-1],
-                'original_sm_norm': original_sm_norm,
-                'vis_mask_l': vis_mask_l,
-                'vis_mask_logit_l': vis_mask_logit_l,
-                'vis_radius_l': vis_radius_l,
-                'points_l': points_l,
-                'labels_l': labels_l,
-                'num_l': num_l,
-                'vis_mask0_l': vis_mask0_l,
-                'mask_logit_origin_l': mask_logit_origin_l,}
+                    'vis_input_img': vis_input_img,
+                    'vis_radius': vis_radius_l[-1],
+                    'original_sm_norm': original_sm_norm,
+                    'vis_mask_l': vis_mask_l,
+                    'vis_mask_logit_l': vis_mask_logit_l,
+                    'vis_radius_l': vis_radius_l,
+                    'points_l': points_l,
+                    'labels_l': labels_l,
+                    'num_l': num_l,
+                    'vis_mask0_l': vis_mask0_l,
+
+                    'mask_l': mask_l,
+                    'mask_logit_l': mask_logit_l,
+                    'mask_logit_origin_l': mask_logit_origin_l,
+                    
+                    'sm_logit_l': sm_logit_l}
         
     return vis_mask_l[-1], vis_mask_logit_l[-1], mask_logit_origin, points_l[-1], labels_l[-1], num_l[-1], vis_dict
-    return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
-
-    return sm_mean_l[-1], sm_l[-1], vis_map_img, vis_input_img, original_sm_norm
 
 
 def clip_surgery(np_img, text, model, args, device='cuda'):
