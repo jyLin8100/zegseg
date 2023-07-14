@@ -64,13 +64,49 @@ def get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, confi
     return mask, mask_logit, points, labels, num, vis_dict
 
 
-def fuse_mask(mask_logit_origin_l, sam_thr, fuse='avg'):
+def fuse_mask_1(mask_logit_origin_l, vis_map_img, sam_thr):
+    num_mask = len(mask_logit_origin_l)
+    #vis_map_img_mean = sum(vis_map_img)/num_mask
+    mask_l = []
+    mask_logit_l = []
+    min_value_l = []
+    for i in range(num_mask):
+        mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin_l[i])).numpy()
+        mask = mask_logit_origin_l[i] > sam_thr
+        mask = mask.astype('uint8')
+        mask_logit *= 255
+        mask_logit = mask_logit.astype('uint8')
+        # min_value = np.mean((mask_logit - vis_map_img[i]) ** 2)
+        min_value = np.mean((mask - vis_map_img[num_mask-1]) ** 2)
+        mask_l.append(mask)
+        mask_logit_l.append(mask_logit)
+        min_value_l.append(min_value)
+    num_sort = min_value_l.index(min(min_value_l))
+    mask = mask_l[num_sort]
+    mask_logit = mask_logit_l[num_sort]
+    return mask, mask_logit
+
+def fuse_mask(mask_logit_origin_l, sam_thr, fuse='avg', mask_l=None, mask_logit_l=None, sm_logit_l=None):
 
     num_mask = len(mask_logit_origin_l)
     if fuse=='avg':  
         mask_logit_origin = sum(mask_logit_origin_l)/num_mask  # 
         mask_logit = F.sigmoid(torch.from_numpy(mask_logit_origin)).numpy()
         mask = mask_logit_origin > sam_thr
+    # else fuse=='MaskSmMSE':
+    #     mask_l = []
+    #     mask_logit_l = []
+    #     min_value_l = []
+    #     for i in range(num_mask):
+    #         min_value = np.mean((mask_l - vis_map_img[i]) ** 2)
+    #         mask_l.append(mask)
+    #         mask_logit_l.append(mask_logit)
+    #         min_value_l.append(min_value)
+    #     num_sort = min_value_l.index(min(min_value_l))
+    #     mask = mask_l[num_sort]
+    #     mask_logit = mask_logit_l[num_sort]
+
+    # else fuse=='MasklogitSmMSE':
 
     mask = mask.astype('uint8')
     mask_logit *= 255
@@ -111,7 +147,7 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
         for i in range(args.recursive+1):
             if i>=1 and args.update_text:
                 cur_image_pil = Image.fromarray(cur_image.astype(np.uint8))
-                text = get_text_from_img('', cur_image_pil, model=BLIP_model, vis_processors=BLIP_vis_processors, question_l=args.prompt_q)
+                text = get_text_from_img('', cur_image_pil, model=BLIP_model, vis_processors=BLIP_vis_processors)
 
             sm, sm_mean, sm_logit = clip_surgery(cur_image, text, clip_model, args, device='cuda')
             if i==0:    original_sm_norm = sm_logit[..., 0]
@@ -213,8 +249,10 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
             # collect for visualization
             vis_input_img.append(cur_image.astype('uint8'))
             vis_clip_sm_img.append((255*sm_logit[...,0]).astype('uint8'))
-            vis_map_img.append((255*sm1[...,0]).astype('uint8'))
-            sm_l.append(sm)
+            # vis_map_img.append((255*sm1[...,0]).astype('uint8'))
+            # sm_l.append(sm)
+            sm_l.append(sm1[...,0]) 
+            vis_map_img.append((255*np.mean(sm_l, axis=0)).astype('uint8'))
             sm_mean_l.append(sm_mean)
             sm_logit_l.append(sm_logit)
 
@@ -232,7 +270,7 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
 
         vis_dict = {'vis_map_img': vis_map_img,
                     'vis_clip_sm_img': vis_clip_sm_img,
-                    'vis_input_img': vis_input_img,
+                    'vis_input_img': vis_input_img, 
                     'vis_radius': vis_radius_l[-1],
                     'original_sm_norm': original_sm_norm,
                     'vis_mask_l': vis_mask_l,
@@ -250,6 +288,9 @@ def get_mask(pil_img, text, sam_predictor, clip_model, args, device='cuda', BLIP
                     'sm_logit_l': sm_logit_l}
         
     return vis_mask_l[-1], vis_mask_logit_l[-1], mask_logit_origin, points_l[-1], labels_l[-1], num_l[-1], vis_dict
+    return mask, mask_logit, mask_logit_origin, points, labels, num, vis_dict
+
+    return sm_mean_l[-1], sm_l[-1], vis_map_img, vis_input_img, original_sm_norm
 
 
 def clip_surgery(np_img, text, model, args, device='cuda'):
@@ -287,35 +328,44 @@ def clip_surgery(np_img, text, model, args, device='cuda'):
     return sm, sm_mean, sm1
 
 
-def get_text_from_img(img_path, pil_img, BLIP_dict={}, model=None, vis_processors=None, device='cuda', question_l=None, answer_l=None):
+def get_text_from_img(img_path, pil_img, BLIP_dict={}, model=None, vis_processors=None, device='cuda'):
     if BLIP_dict.get(img_path) is not None:
         text = [BLIP_dict[img_path]]
     else:
+        # prepare the image
+        # model = model.float()
         image = vis_processors["eval"](pil_img).unsqueeze(0).to(device)
+        #blip_output2 = model.generate({"image": image, "prompt": "This animal is in the left or in the right or in the middle of the picture? Answer:"})
+        # print("blip_output2", blip_output2)
         blip_output = model.generate({"image": image})
+        # print(blip_output)
         blip_output = blip_output[0].split('-')[0]
         context = [
             ("Image caption",blip_output),
         ]
-        template = "Question: {}. Answer: {}."
-        if question_l is None:
-            question_l = ["Name of the hidden animal in one word.", "Name of the concealed animal in one word.", "Name of the camouflage animal in one word.", ]
-        text_list = []
-        for question in question_l:
-            prompt = " ".join([template.format(context[i][0], context[i][1]) for i in range(len(context))]) + " Question: " + question + " Answer:"
-            blip_output_forsecond = model.generate({"image": image, "prompt": prompt})
-            out_list = []
-            blip_output_forsecond = blip_output_forsecond[0].split('-')[0].replace('\'','')
-            out_list.append(blip_output_forsecond)
+        template = "Question: {} Answer: {}."
+        # question = "Use a word to summary the name of this animal?"
+        question = "Name of hidden animal in one word"
+        prompt = " ".join([template.format(context[i][0], context[i][1]) for i in range(len(context))]) + " Question: " + question + " Answer:"
+        blip_output_forsecond = model.generate({"image": image, "prompt": prompt})
+        # blip_output_forsecond = blip_output_forsecond[0].split('_')[0]
+        # context1 = [
+        #     ("Image caption.", blip_output),
+        #     ("Use a word to tell what is this animal?", blip_output_forsecond),
+        # ]
+        # question2 = "The animal is in the right or in the middle or in the left of this picture?"
+        all_texts = ['airplane', 'bag', 'bed', 'bedclothes', 'bench', 'bicycle', 'bird', 'boat', 'book', 'bottle', 'building', 'bus', 'cabinet', 'car', 'cat', 'ceiling', 'chair', 'cloth', 'computer', 'cow', 'cup', 'curtain', 'dog', 'door', 'fence', 'floor', 'flower', 'food', 'grass', 'ground', 'horse', 'keyboard', 'light', 'motorbike', 'mountain', 'mouse', 'person', 'plate', 'platform', 'potted plant', 'road', 'rock', 'sheep', 'shelves', 'sidewalk', 'sign', 'sky', 'snow', 'sofa', 'table', 'track', 'train', 'tree', 'truck', 'tv monitor', 'wall', 'water', 'window', 'wood']
 
-            if len(blip_output_forsecond)==0:    continue
-            out_list = " ".join(out_list)
-            text_list.append(out_list)
-            print(f'prompt: {prompt}')
+        out_list = []
+        blip_output_forsecond = blip_output_forsecond[0].split('-')[0].replace('\'','')
+        out_list.append(blip_output_forsecond)
+        #out_list.append(blip_output2[0])
+        out_list = " ".join(out_list)
+        text_list = []
+        text_list.append(out_list)
         text = text_list
-        if len(text)==0:
-            text = ["the hidden animal", "the concealed animal", "the camouflage animal"] if answer_l is None else answer_l
-        
+        # text = ["a leaf"]
+        print(f'out_list:{out_list}\n blip_output:{blip_output}\n blip_output_forsecond:{blip_output_forsecond} (prompt: {prompt})')
     print(text)
     return text
 
@@ -336,20 +386,15 @@ def heatmap2points(sm, sm_mean, np_img, args, attn_thr=-1):
     # labels = [[]]
     # vis_radius = [np.linspace(4,1,0)]
 
-    # for i in range(sm.shape[-1]):  
-    #     p, l, map = clip.similarity_map_to_points(sm[:, i], cv2_img.shape[:2], cv2_img, t=attn_thr, 
-    #                                                 down_sample=args.down_sample,
-    #                                                 pt_topk=args.pt_topk)
-    #     map_l.append(map)
-    #     num = len(p) // 2
-
-    #     points = points + p[:num] # positive in first half
-    #     labels.append(l[:num])
-    #     vis_radius.append(np.linspace(2,5,num))
-
-    points = points + p[:num] # positive in first half
-    labels.append(l[:num])
-    vis_radius.append(np.linspace(2,5,num))
+    for i in range(sm.shape[-1]):  
+        p, l, map = clip.similarity_map_to_points(sm[:, i], cv2_img.shape[:2], cv2_img, t=attn_thr, 
+                                                    down_sample=args.down_sample,
+                                                    pt_topk=args.pt_topk)
+        map_l.append(map)
+        num = len(p) // 2
+        points = points + p[:num] # positive in first half
+        labels.append(l[:num])
+        vis_radius.append(np.linspace(2,5,num))
     labels = np.concatenate(labels, 0)
     vis_radius = np.concatenate(vis_radius, 0).astype('uint8')
 
@@ -420,9 +465,6 @@ def get_dir_from_args(args, config=None, parent_dir='output_img/'):
             exp_name += f'_fuseMask'
         if args.post_mode !='':
             exp_name += f'_post{args.post_mode}'
-        if args.prompt_q!='Name of hidden animal in one word':
-            exp_name += f'_prompt_q{args.prompt_q[:5]}{len(args.prompt_q)}'
-
 
         save_path_dir = f'{parent_dir+exp_name}/'
         printd(f'{exp_name} ({args}')

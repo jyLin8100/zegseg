@@ -24,6 +24,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--config', default='configs/mydemo.yaml')
 parser.add_argument('--use_cache_text', type=bool, default=True, help='load text from cache') 
 parser.add_argument('--update_text', action='store_true', help='update text using BLIP for each iteration') 
+parser.add_argument('--prompt_q', type=str, default=None)
 parser.add_argument('--multi_mask_fusion', type=bool, default=False, help='fuse multiple masks') 
 parser.add_argument('--multi_mask_fusion_strategy', type=str, default='avg', help='fuse multiple masks')  # avg, entropy, entropy2
 parser.add_argument('--cache_blip_filename', type=str, default='COD_GT_woPos', help='the filename to load text from cache') # COD, COD_woPos, COD_GT, COD_GT_woPos, COD_BLIP_GT_woPos
@@ -138,7 +139,7 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
     if args.use_cache_text:
         text = blip_text_l[s_i] 
     else:
-        text = get_text_from_img('', pil_img, model=BLIP_model, vis_processors=BLIP_vis_processors)
+        text = get_text_from_img('', pil_img, model=BLIP_model, vis_processors=BLIP_vis_processors, question=args.prompt_q)
         
     if args.multi_mask_fusion:
         mask, mask_logit, points, labels, num, vis_dict = get_fused_mask(pil_img, text, sam_predictor, clip_model, args, device, config)
@@ -169,6 +170,8 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
                     transforms.ToTensor(),
                 ])
     printd(f'{s_i}\t img_path:{img_path}\t text:{text}\t  ')
+    
+    result1_single_mask_l = []
     for i in range(args.recursive+1):
         vis_tensor = Image.fromarray(vis_mask_l[i])
         vis_tensor = mask_transform(vis_tensor)[0].view(1, 1, inp_size, inp_size)
@@ -178,6 +181,7 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         val_metric2[i].add(result2.item(), tensor_gt.shape[0])
         val_metric3[i].add(result3.item(), tensor_gt.shape[0])
         val_metric4[i].add(result4.item(), tensor_gt.shape[0])
+        result1_single_mask_l.append(result1)
 
 
         vis_tensor = Image.fromarray(vis_mask_acc_l[i])
@@ -188,6 +192,20 @@ for s_i, img_path, pairs in zip(range(data_len), paths_img, loader):
         val_metric_acc2[i].add(result2.item(), tensor_gt.shape[0])
         val_metric_acc3[i].add(result3.item(), tensor_gt.shape[0])
         val_metric_acc4[i].add(result4.item(), tensor_gt.shape[0])
+
+    # get dist between individual mask and fused mask
+    mask_delta_l = [np.sum((mask_i - vis_mask_acc_l[-1])**2) for mask_i in vis_dict['mask_l']]
+    mask_logit_delta_l = [np.sum((mask_logit_i - vis_mask_logit_acc_l[-1])**2) for mask_logit_i in vis_dict['vis_mask_logit_l']]
+    idxTop = result1_single_mask_l.index(max(result1_single_mask_l))
+    idxMaskSim = np.argmin(mask_delta_l)
+    idxMaskLgtSim = np.argmin(mask_logit_delta_l)
+    print(f'distance to fused mask: {mask_delta_l}\n{mask_logit_delta_l}')
+    print('index:', idxTop,
+                    idxMaskSim,
+                    idxMaskLgtSim,
+                    idxTop==idxMaskSim,
+                    idxTop==idxMaskLgtSim,
+                    )
 
 
     ## visualization
